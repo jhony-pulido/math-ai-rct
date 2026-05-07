@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Quarto render output
+_site/
+.quarto/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive / large files
+data/
+outputs/
+codebook.pdf
+CLAUDE.md
+Project Context.txt
+
+/.quarto/
+**/*.quarto_ipynb

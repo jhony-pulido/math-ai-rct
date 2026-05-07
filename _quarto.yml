@@ -1,0 +1,34 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Math AI RCT — Data Analysis Report"
+  navbar:
+    left:
+      - href: report/00_index.qmd
+        text: Overview
+      - href: report/01_data_quality.qmd
+        text: Data Quality
+      - href: report/02_descriptives.qmd
+        text: Descriptives
+      - href: report/03_balance.qmd
+        text: Balance Tests
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+    embed-resources: false
+    fig-width: 9
+    fig-height: 5
+    fig-dpi: 150
+
+execute:
+  freeze: auto
+  echo: true
+  warning: false
+  message: false

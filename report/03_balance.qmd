@@ -1,0 +1,172 @@
+---
+title: "3. Balance Tests"
+---
+
+```{python}
+import sys
+sys.path.insert(0, "../src")
+import utils
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from scipy import stats
+import statsmodels.formula.api as smf
+
+utils.set_theme()
+
+dfs = utils.load_all()
+baseline = dfs["baseline"]
+schools  = dfs["schools"]
+
+# Merge treatment arm into baseline
+treatment_lookup = schools[["school_id", "treatment", "treatment_label"]].copy()
+baseline = baseline.merge(treatment_lookup, left_on="school_code", right_on="school_id", how="left")
+
+# Flat list of (col, label) for balance vars
+balance_cols = {col: label for section in utils.BALANCE_VARS.values() for col, label in section.items()}
+```
+
+## 3.1 Covariate Balance Table
+
+Mean (SD) by arm. P-values are from pairwise two-sample t-tests. Standardized mean differences (SMD) are Cohen's d relative to Control.
+
+```{python}
+def cohens_d(group_a: pd.Series, group_b: pd.Series) -> float:
+    """Pooled-SD standardized mean difference."""
+    na, nb = len(group_a.dropna()), len(group_b.dropna())
+    if na < 2 or nb < 2:
+        return np.nan
+    pooled_std = np.sqrt(
+        ((na - 1) * group_a.dropna().var() + (nb - 1) * group_b.dropna().var()) / (na + nb - 2)
+    )
+    if pooled_std == 0:
+        return np.nan
+    return (group_a.dropna().mean() - group_b.dropna().mean()) / pooled_std
+
+
+arms = list(utils.TREATMENT_MAP.values())  # Control, T1, T2
+groups = {arm: baseline[baseline["treatment_label"] == arm] for arm in arms}
+control = groups[arms[0]]
+
+rows = []
+for col, label in balance_cols.items():
+    if col not in baseline.columns:
+        continue
+    row = {"Variable": label}
+
+    for arm in arms:
+        data = groups[arm][col].dropna()
+        if set(data.unique()) <= {0, 1, 0.0, 1.0}:
+            row[arm] = f"{data.mean()*100:.1f}%"
+        else:
+            row[arm] = f"{data.mean():.2f} ({data.std():.2f})"
+
+    # Pairwise t-test p-values vs Control
+    for arm in arms[1:]:
+        a = control[col].dropna()
+        b = groups[arm][col].dropna()
+        if len(a) >= 2 and len(b) >= 2:
+            _, pval = stats.ttest_ind(a, b, equal_var=False)
+            row[f"p (Control vs {arm})"] = f"{pval:.3f}"
+            row[f"SMD (Control vs {arm})"] = f"{cohens_d(b, a):.3f}"
+        else:
+            row[f"p (Control vs {arm})"] = "—"
+            row[f"SMD (Control vs {arm})"] = "—"
+
+    rows.append(row)
+
+balance_table = pd.DataFrame(rows)
+print(balance_table.to_string(index=False))
+balance_table.to_csv("../outputs/tables/03_balance_table.csv", index=False)
+```
+
+## 3.2 Joint F-test (Omnibus Balance)
+
+Regress each treatment indicator on all available baseline covariates. A significant F-statistic suggests baseline covariates jointly predict treatment assignment, which would indicate a balance concern.
+
+```{python}
+available_cols = [col for col in balance_cols if col in baseline.columns]
+formula_vars = " + ".join(available_cols)
+
+for arm_label, arm_code in [("T1", 1), ("T2", 2)]:
+    df_sub = baseline[baseline["treatment"].isin([0, arm_code])].copy()
+    df_sub["is_treated"] = (df_sub["treatment"] == arm_code).astype(int)
+
+    # Drop rows with any missing value in the covariates
+    df_clean = df_sub[["is_treated"] + available_cols].dropna()
+    formula = f"is_treated ~ {formula_vars}"
+
+    try:
+        model = smf.ols(formula, data=df_clean).fit()
+        fstat = model.fvalue
+        fpval = model.f_pvalue
+        n     = int(model.nobs)
+        print(f"\nControl vs {arm_label}  (n={n})")
+        print(f"  F-statistic: {fstat:.3f}   p-value: {fpval:.4f}")
+        if fpval < 0.05:
+            print("  ⚠  Significant — baseline covariates jointly predict treatment.")
+        else:
+            print("  ✓  Not significant — randomization appears balanced.")
+    except Exception as e:
+        print(f"  Could not fit model for {arm_label}: {e}")
+```
+
+## 3.3 Love Plot (Standardized Mean Differences)
+
+Visualizes the magnitude of imbalance for each covariate. Values inside the dashed lines (|SMD| < 0.1) indicate good balance.
+
+```{python}
+smd_rows = []
+for col, label in balance_cols.items():
+    if col not in baseline.columns:
+        continue
+    for arm in arms[1:]:
+        a = control[col].dropna()
+        b = groups[arm][col].dropna()
+        d = cohens_d(b, a)
+        smd_rows.append({"Variable": label, "Arm": arm, "SMD": d})
+
+smd_df = pd.DataFrame(smd_rows).dropna(subset=["SMD"])
+
+fig, ax = plt.subplots(figsize=(8, max(5, len(balance_cols) * 0.45)))
+
+colors = {"T1 — Standard AI": "#DD8452", "T2 — Modified AI": "#55A868"}
+offset = {"T1 — Standard AI": -0.15, "T2 — Modified AI": 0.15}
+
+variables = smd_df["Variable"].unique().tolist()
+y_pos = {v: i for i, v in enumerate(variables)}
+
+for arm, color in colors.items():
+    sub = smd_df[smd_df["Arm"] == arm]
+    ys = [y_pos[v] + offset[arm] for v in sub["Variable"]]
+    ax.scatter(sub["SMD"], ys, color=color, label=arm, s=60, zorder=3)
+
+ax.axvline(0,    color="black", linewidth=0.8)
+ax.axvline( 0.1, color="gray",  linewidth=0.8, linestyle="--")
+ax.axvline(-0.1, color="gray",  linewidth=0.8, linestyle="--")
+ax.set_yticks(list(y_pos.values()))
+ax.set_yticklabels(list(y_pos.keys()), fontsize=9)
+ax.set_xlabel("Standardized Mean Difference (Cohen's d)\n(Treatment − Control)")
+ax.set_title("Love Plot — Covariate Balance by Treatment Arm")
+ax.legend(loc="lower right")
+plt.tight_layout()
+plt.savefig("../outputs/figures/03_love_plot.png", dpi=150)
+plt.show()
+```
+
+## 3.4 Summary
+
+```{python}
+# Count variables with |SMD| > 0.1 per arm
+for arm in arms[1:]:
+    sub = smd_df[smd_df["Arm"] == arm]
+    n_imbalanced = (sub["SMD"].abs() > 0.1).sum()
+    n_total = len(sub)
+    print(f"{arm}: {n_imbalanced}/{n_total} variables with |SMD| > 0.1")
+```
+
+::: {.callout-note}
+**Interpretation guidance:** An SMD > 0.1 or < −0.1 is typically considered a meaningful imbalance in RCT evaluations. If several variables are imbalanced, downstream impact analyses should include those variables as controls. A significant joint F-test (p < 0.05) warrants the same precaution even if individual SMDs look small.
+:::

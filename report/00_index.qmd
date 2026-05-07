@@ -1,0 +1,52 @@
+---
+title: "Math AI RCT — Data Analysis Report"
+subtitle: "Overview & Recommendations"
+author: "Jhony Pulido"
+date: today
+---
+
+## Study Context
+
+This report analyzes data from a randomized controlled trial (RCT) evaluating the impact of an AI-based math tutor on learning outcomes and post-secondary decisions. The study was conducted across **30 secondary schools** in Lima, Peru (DRELM), with approximately **1,200 fifth-year students** assigned to three arms:
+
+- **Control** — no intervention
+- **T1** — Standard AI Tutor (uDocz platform)
+- **T2** — Modified AI Tutor (uDocz platform with additional features)
+
+Randomization was at the **school level**. Data come from a Qualtrics baseline survey administered before treatment, and interaction logs from the uDocz educational platform.
+
+## Report Sections
+
+| Section | Focus |
+|---|---|
+| [Data Quality](01_data_quality.qmd) | Missing values, validity checks, ID coverage across datasets |
+| [Descriptives](02_descriptives.qmd) | Sample characteristics, platform engagement, math performance |
+| [Balance Tests](03_balance.qmd) | Covariate balance across treatment arms, joint orthogonality test |
+
+## Key Findings
+
+::: {.callout-note}
+This section will be completed after all analyses are run. It will summarize the most important findings from each section and their implications.
+:::
+
+### Data Quality
+*To be completed.*
+
+### Descriptive Patterns
+*To be completed.*
+
+### Balance Assessment
+*To be completed.*
+
+## Recommendations
+
+::: {.callout-note}
+This section will be completed after all analyses are run.
+:::
+
+Key questions to address:
+
+- Which variables have quality issues that require attention in downstream analysis?
+- Is attrition from baseline to platform usage differential across treatment arms?
+- Does the balance assessment suggest the need for covariate adjustment in outcome regressions?
+- Which subsamples or variables should be prioritized or excluded in impact evaluations?
