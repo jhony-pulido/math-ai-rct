@@ -14,6 +14,7 @@ Thumbs.db
 
 # Sensitive / large files
 data/
+# data_public/ is intentionally tracked (anonymized)
 outputs/
 codebook.pdf
 CLAUDE.md
