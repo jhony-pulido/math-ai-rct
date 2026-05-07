@@ -51,15 +51,15 @@ quarto publish quarto-pub
 
 Raw CSVs are in `data/`. See `codebook.pdf` for variable definitions (Spanish).
 
-| File | Rows | Grain |
-|---|---|---|
-| `baseline_estudiantes.csv` | 1,204 | Student |
-| `randomizacion_escuelas.csv` | 32 | School |
-| `math_chat_casa.csv` | 8,061 | Message |
-| `math_chat_escuela.csv` | 6,366 | Message |
-| `math_ponte_prueba.csv` | 5,224 | Quiz attempt |
-| `voc_chat.csv` | 5,122 | Message |
-| `voc_steps.csv` | 1,178 | Student × step |
+| File | Rows | Grain | Description |
+|---|---|---|---|
+| `baseline_estudiantes.csv` | 1,204 | Student | Pre-treatment survey: demographics, psychological scales, math assessment, and aspirations |
+| `randomizacion_escuelas.csv` | 32 | School | School-level treatment assignment and stratification variables |
+| `math_chat_casa.csv` | 8,061 | Message | Student–AI math tutoring conversations conducted at home |
+| `math_chat_escuela.csv` | 6,366 | Message | Student–AI math tutoring conversations conducted at school, with topic and correctness data |
+| `math_ponte_prueba.csv` | 5,224 | Quiz attempt | Math quiz interactions from the platform, with correctness indicators |
+| `voc_chat.csv` | 5,122 | Message | Student–AI career guidance conversations across an 8-step vocational journey |
+| `voc_steps.csv` | 1,178 | Student × step | Student-level progress, time spent, and completion across the 8 vocational journey steps |
 
 ## Project Structure
 
