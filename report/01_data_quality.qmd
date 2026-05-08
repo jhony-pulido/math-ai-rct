@@ -105,8 +105,13 @@ Only 6 of 162 variables have missing values. Missing rates are low across the bo
 ### C. Duplicates
 
 ```{python}
-print(checks.check_duplicates(baseline, "qualtrics_id").to_string(index=False))
+dup_results = checks.check_duplicates(baseline, "qualtrics_id")
+utils.gt_check_results(dup_results, title="Duplicate check — qualtrics_id")
 ```
+
+::: {.callout-note}
+No duplicate student identifiers found. Each of the 1,203 rows corresponds to a unique student.
+:::
 
 ### D. Survey response quality
 
@@ -115,9 +120,59 @@ Flag incomplete surveys (`progress` < 100) and outliers in response duration.
 ```{python}
 results = pd.concat([
     checks.check_range(baseline, "progress", 100, 100),
-    checks.check_range(baseline, "duration_min", 5, 120),
+    checks.check_range(baseline, "duration_min", 15, 60),
 ])
-print(results.to_string(index=False))
+utils.gt_check_results(results, title="Survey response quality")
+```
+
+::: {.callout-warning}
+Two response quality issues were identified. First, 23 students (1.9%) did not complete the survey — all stopped between 30–47% progress, suggesting dropout during a specific mid-survey section; their duration (mean: 36.7 min) is comparable to complete surveys (mean: 35.3 min), indicating these were not quick abandons. Second, 76 students (6.3%) fall outside the plausible duration range of 15–60 minutes: 54 completed too quickly (< 15 min, possibly inattentive) and 22 took too long (> 60 min, possibly distracted or interrupted). These students should be flagged as potentially low-quality responses in subsequent analyses.
+:::
+
+::: {.callout-note collapse="true"}
+## Incomplete survey detail
+
+```{python}
+from scipy import stats
+
+incomplete = baseline[baseline["progress"] < 100][["progress", "duration_min"]].sort_values("progress")
+complete   = baseline[baseline["progress"] == 100]["duration_min"]
+
+# Progress at dropout
+col1 = incomplete["progress"].value_counts().sort_index().reset_index()
+col1.columns = ["Progress (%)", "N Students"]
+print("Progress at dropout:")
+print(col1.to_string(index=False))
+
+# Duration comparison + t-test
+t_stat, p_val = stats.ttest_ind(incomplete["duration_min"], complete)
+dur_comparison = pd.DataFrame({
+    "Group": ["Incomplete (n=23)", "Complete (n=1,180)"],
+    "Mean duration (min)": [
+        round(incomplete["duration_min"].mean(), 1),
+        round(complete.mean(), 1),
+    ],
+    "SD": [
+        round(incomplete["duration_min"].std(), 1),
+        round(complete.std(), 1),
+    ],
+})
+print("\nDuration comparison:")
+print(dur_comparison.to_string(index=False))
+print(f"\nt-statistic: {t_stat:.3f}  |  p-value: {p_val:.3f}")
+```
+:::
+
+```{python}
+# Response quality flags for use in downstream analyses
+baseline = baseline.copy()
+baseline["flag_incomplete"] = (baseline["progress"] < 100).astype(int)
+baseline["flag_duration"]   = ((baseline["duration_min"] < 15) | (baseline["duration_min"] > 60)).astype(int)
+baseline["flag_low_quality"] = ((baseline["flag_incomplete"] == 1) | (baseline["flag_duration"] == 1)).astype(int)
+
+print(f"flag_incomplete:  {baseline['flag_incomplete'].sum()} students")
+print(f"flag_duration:    {baseline['flag_duration'].sum()} students")
+print(f"flag_low_quality: {baseline['flag_low_quality'].sum()} students (union of both)")
 ```
 
 ### E. Demographics

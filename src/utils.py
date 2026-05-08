@@ -220,25 +220,43 @@ BALANCE_VARS = {
 
 # ── Table rendering ───────────────────────────────────────────────────────────
 
-def gt_check_results(df: pd.DataFrame, title: str = "", subtitle: str = "") -> GT:
+def gt_check_results(
+    df: pd.DataFrame,
+    title: str = "",
+    subtitle: str = "",
+    show_pass: bool = False,
+) -> GT:
     """Render a checks.py results DataFrame as a formatted great_tables table.
     Rows where pass == False (or n_flagged > 0) are highlighted in red.
+    Set show_pass=True to include the Pass column.
     """
-    gt = (
-        GT(df)
-        .tab_header(title=title, subtitle=subtitle) if title else GT(df)
-    )
-    gt = GT(df)
-    if title:
-        gt = gt.tab_header(title=title, subtitle=subtitle)
+    display_df = df.drop(columns=["pass"]) if "pass" in df.columns and not show_pass else df.copy()
 
-    # Highlight flagged rows
+    col_labels = {}
+    if "variable" in display_df.columns:    col_labels["variable"]    = "Variable"
+    if "check" in display_df.columns:       col_labels["check"]       = "Check"
+    if "n_flagged" in display_df.columns:   col_labels["n_flagged"]   = "N Flagged"
+    if "pct_flagged" in display_df.columns: col_labels["pct_flagged"] = "% Flagged"
+    if "pass" in display_df.columns:        col_labels["pass"]        = "Pass"
+
+    gt = GT(display_df)
+    if title:
+        gt = (
+            gt.tab_header(title=title, subtitle=subtitle)
+            .tab_style(style=style.text(weight="bold"), locations=loc.title())
+        )
+    gt = gt.cols_label(**col_labels)
+    gt = gt.tab_style(
+        style=style.borders(sides="top", weight="2px", color="#333333"),
+        locations=loc.body(rows=[0]),
+    )
+
     if "n_flagged" in df.columns:
         gt = gt.tab_style(
             style=style.fill(color="#FDECEA"),
             locations=loc.body(rows=lambda x: x["n_flagged"] > 0),
         )
-    if "pass" in df.columns:
+    if show_pass and "pass" in df.columns:
         gt = gt.tab_style(
             style=style.fill(color="#FDECEA"),
             locations=loc.body(rows=lambda x: x["pass"] == False),
