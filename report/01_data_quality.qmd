@@ -2,6 +2,25 @@
 title: "1. Data Quality Assessment"
 ---
 
+## Assessment approach
+
+Before running any analysis, we systematically assessed the quality of each dataset along several dimensions. The table below summarizes the checks applied to each file.
+
+| Check | Description |
+|---|---|
+| **File overview** | Row and column counts; identification of structurally empty columns |
+| **Missing values** | Missing rate per variable, grouped by thematic block; flagging variables with meaningful missingness |
+| **Duplicates** | Check for duplicate student or record identifiers |
+| **Survey response quality** | Completion rate (`progress`) and response duration (`duration_min`) outliers |
+| **Range validity** | Expected value ranges for all variables (Likert scales, binary indicators, continuous measures) |
+| **Scale consistency** | Replication of pre-computed scale averages from constituent items; reversal checks for reverse-coded items |
+| **Derived variable consistency** | Cross-variable logical checks (e.g., `educ_parent_max` vs. `educ_mother`/`educ_father`; math score totals vs. item sums) |
+| **Hours budget** | Per-student daily hours sum plausibility; individual variable outliers and unexpected zeroes |
+| **Salary beliefs** | Positivity and expected ordering across education levels |
+| **Treatment linkage** | Student–school merge coverage; student counts per treatment arm |
+
+Checks were designed prior to data inspection based on the study codebook and instrument documentation. Thresholds (e.g., response duration, hours budget) were set on substantive grounds.
+
 ```{python}
 import sys
 sys.path.insert(0, "../src")
