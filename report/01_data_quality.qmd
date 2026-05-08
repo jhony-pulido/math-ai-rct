@@ -12,9 +12,8 @@ Before running any analysis, we systematically assessed the quality of each data
 | **Missing values** | Missing rate per variable, grouped by thematic block; flagging variables with meaningful missingness |
 | **Duplicates** | Check for duplicate student or record identifiers |
 | **Survey response quality** | Completion rate (`progress`) and response duration (`duration_min`) outliers |
-| **Range validity** | Expected value ranges for all variables (Likert scales, binary indicators, continuous measures) |
-| **Scale consistency** | Replication of pre-computed scale averages from constituent items; reversal checks for reverse-coded items |
-| **Derived variable consistency** | Cross-variable logical checks (e.g., `educ_parent_max` vs. `educ_mother`/`educ_father`; math score totals vs. item sums) |
+| **Range validity** | Expected value ranges checked across thematic blocks: demographics, academic background, computer lab, hours & study habits, aspirations, social network, salary beliefs, and math assessment |
+| **Derived variable consistency** | Cross-variable logical checks including scale average replication and reversal checks for reverse-coded items (e.g., grit, math enjoyment, math self-concept), as well as consistency between derived variables and their components (e.g., `educ_parent_max` vs. `educ_mother`/`educ_father`; math score totals vs. item sums) |
 
 Additional dataset-specific checks are described within each section below. Thresholds were set on substantive grounds based on the study codebook and instrument documentation.
 
@@ -175,7 +174,9 @@ print(f"flag_duration:    {baseline['flag_duration'].sum()} students")
 print(f"flag_low_quality: {baseline['flag_low_quality'].sum()} students (union of both)")
 ```
 
-### E. Demographics
+### E. Range validity
+
+#### Demographics
 
 ```{python}
 results = pd.concat([
@@ -191,10 +192,10 @@ results = pd.concat([
     checks.check_range(baseline, "digital_comfort", 1, 5),
     checks.check_range(baseline, "platform_use", 1, 4),
 ])
-print(results.to_string(index=False))
+utils.gt_check_results(results, title="Range validity — Demographics")
 ```
 
-### L. Academic background and perceptions
+#### Academic background and perceptions
 
 ```{python}
 results = pd.concat([
@@ -208,20 +209,20 @@ results = pd.concat([
     checks.check_range(baseline, "rank_math", 1, 10),
     checks.check_range(baseline, "rank_communication", 1, 10),
 ])
-print(results.to_string(index=False))
+utils.gt_check_results(results, title="Range validity — Academic background and perceptions")
 ```
 
-### M. Computer lab
+#### Computer lab
 
 ```{python}
 results = pd.concat([
     checks.check_range(baseline, "lab_productive", 1, 5),
     checks.check_range(baseline, "lab_preferred_hours", 1, 15),
 ])
-print(results.to_string(index=False))
+utils.gt_check_results(results, title="Range validity — Computer lab")
 ```
 
-### G. Hours budget and study habits
+#### Hours budget and study habits
 
 ```{python}
 HOURS_COLS = ["hours_school", "hours_study", "hours_friends", "hours_entertainment",
@@ -237,26 +238,89 @@ hours_results = checks.check_hours_budget(
     high_threshold=12,
 )
 
-print("--- Budget ---")
-print(hours_results["budget"].to_string(index=False))
-print("\n--- Unexpected zeroes ---")
-print(hours_results["zeroes"].to_string(index=False))
-print("\n--- Abnormally high values ---")
-print(hours_results["high_values"].to_string(index=False))
+utils.gt_check_results(hours_results["budget"], title="Range validity — Hours budget")
+```
 
-# Study habit variables
+```{python}
+utils.gt_check_results(
+    hours_results["zeroes"].rename(columns={"n_zero": "n_flagged", "pct_zero": "pct_flagged"}),
+    title="Range validity — Unexpected zeroes in hours variables"
+)
+```
+
+```{python}
+utils.gt_check_results(hours_results["high_values"],
+                       title="Range validity — Abnormally high values in hours variables")
+```
+
+```{python}
 study_results = pd.concat([
     checks.check_range(baseline, "math_study_weekly", 1, 5),
     checks.check_range(baseline, "study_context", 1, 4),
     checks.check_range(baseline, "digital_tools_used", 1, 5),
 ])
-print("\n--- Study habits ---")
-print(study_results.to_string(index=False))
+utils.gt_check_results(study_results, title="Range validity — Study habits")
 ```
 
-### F. Scale validity
+#### Aspirations
 
-Range checks on all items and replication of pre-computed averages. Reversal checks applied where items are reverse-coded.
+```{python}
+results = pd.concat([
+    checks.check_range(baseline, "barrier_finish_school", 1, 2),
+    checks.check_range(baseline, "info_postsecondary", 1, 5),
+    checks.check_range(baseline, "plan_after_school", 1, 5),
+    checks.check_range(baseline, "plan_feasibility", 1, 5),
+    checks.check_range(baseline, "knows_career", 1, 3),
+    checks.check_range(baseline, "parent_educ_expectation", 1, 4),
+    checks.check_binary(baseline, "enrolled_academy"),
+    checks.check_range(baseline, "belief_univ_transition", 0, 10),
+])
+utils.gt_check_results(results, title="Range validity — Aspirations")
+```
+
+#### Social network
+
+```{python}
+friend_cols = [f"friend{i}_{var}"
+               for i in range(1, 6)
+               for var in ["recess", "homework", "future_talk", "whatsapp"]]
+
+results = pd.concat([
+    checks.check_range(baseline, "num_close_friends", 1, 6),
+    *[checks.check_binary(baseline, c) for c in friend_cols if c in baseline.columns],
+])
+utils.gt_check_results(results, title="Range validity — Social network")
+```
+
+#### Salary beliefs
+
+```{python}
+results = pd.concat([
+    checks.check_range(baseline, "salary_secondary", 1, 50000),
+    checks.check_range(baseline, "salary_technical", 1, 50000),
+    checks.check_range(baseline, "salary_university", 1, 50000),
+    checks.check_ordering(baseline,
+                          cols=["salary_secondary", "salary_technical", "salary_university"],
+                          label="salary ordering violated (secondary <= technical <= university)"),
+])
+utils.gt_check_results(results, title="Range validity — Salary beliefs")
+```
+
+#### Math assessment items
+
+```{python}
+correct_cols = ["correct_a1", "correct_a2", "correct_a7", "correct_a8", "correct_a8m",
+                "correct_a4", "correct_a9s", "correct_a3", "correct_a6", "correct_a5"]
+
+results = pd.concat([checks.check_binary(baseline, c) for c in correct_cols])
+utils.gt_check_results(results, title="Range validity — Math assessment items")
+```
+
+### F. Derived variable consistency
+
+Cross-variable checks: scale average replication, reversal checks for reverse-coded items, and consistency between derived variables and their components.
+
+#### Scale consistency
 
 ```{python}
 # ── Grit (1–5; grit_quit_game and grit_lose_interest reversed) ───────────────
@@ -269,7 +333,7 @@ results = pd.concat([
                           reversed_items=["grit_quit_game", "grit_lose_interest"],
                           avg_col="grit_avg", scale_max=5),
 ])
-print("Grit\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Grit")
 ```
 
 ```{python}
@@ -280,7 +344,7 @@ results = pd.concat([
     checks.check_range(baseline, "mindset_avg", 1, 6),
     checks.check_avg_replication(baseline, mindset_items, "mindset_avg"),
 ])
-print("Growth mindset\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Growth mindset")
 ```
 
 ```{python}
@@ -291,7 +355,7 @@ results = pd.concat([
     checks.check_range(baseline, "locus_avg", 1, 5),
     checks.check_avg_replication(baseline, locus_items, "locus_avg"),
 ])
-print("Locus of control\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Locus of control")
 ```
 
 ```{python}
@@ -303,7 +367,7 @@ results = pd.concat([
     checks.check_range(baseline, "efficacy_avg", 1, 4),
     checks.check_avg_replication(baseline, efficacy_items, "efficacy_avg"),
 ])
-print("Self-efficacy\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Self-efficacy")
 ```
 
 ```{python}
@@ -317,7 +381,7 @@ results = pd.concat([
                           reversed_items=["math_wish_no"],
                           avg_col="math_enjoy_avg", scale_max=5),
 ])
-print("Math enjoyment\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Math enjoyment")
 ```
 
 ```{python}
@@ -330,7 +394,7 @@ results = pd.concat([
                                   ["math_worry_grades", "math_nervous_exams"],
                                   "math_anxiety_avg"),
 ])
-print("Math anxiety\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Math anxiety")
 ```
 
 ```{python}
@@ -344,13 +408,15 @@ results = pd.concat([
                           reversed_items=["math_harder_than_peers"],
                           avg_col="math_selfconcept_avg", scale_max=5),
 ])
-print("Math self-concept\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Math self-concept")
 ```
 
 ```{python}
 # ── Math attitudes standalone (math_useful: 1–4) ─────────────────────────────
-print("Math attitudes\n",
-      checks.check_range(baseline, "math_useful", 1, 4).to_string(index=False))
+utils.gt_check_results(
+    checks.check_range(baseline, "math_useful", 1, 4),
+    title="Scale consistency — Math attitudes"
+)
 ```
 
 ```{python}
@@ -363,7 +429,7 @@ results = pd.concat([
                                   ["belong_outsider", "belong_fits_in"],
                                   "belonging_avg"),
 ])
-print("Belonging\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Belonging")
 ```
 
 ```{python}
@@ -376,7 +442,7 @@ results = pd.concat([
     checks.check_range(baseline, "meta_actual_exam", 1, 5),
     checks.check_range(baseline, "meta_self_awareness", 1, 3),
 ])
-print("Metacognition\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Metacognition")
 ```
 
 ```{python}
@@ -385,7 +451,7 @@ barrier_cols = ["barrier_money", "barrier_work_family", "barrier_parent_ideas",
                 "barrier_grades", "barrier_info_careers", "barrier_info_institution",
                 "barrier_family_resp"]
 results = pd.concat([checks.check_range(baseline, c, 1, 5) for c in barrier_cols])
-print("Barriers\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Barriers")
 ```
 
 ```{python}
@@ -395,61 +461,18 @@ results = pd.concat([
     checks.check_range(baseline, "knows_beca18", 1, 3),
     checks.check_range(baseline, "knows_alt_training", 1, 3),
 ])
-print("Knowledge of opportunities\n", results.to_string(index=False))
+utils.gt_check_results(results, title="Scale consistency — Knowledge of opportunities")
 ```
 
-### N. Aspirations
+#### Derived variables
 
 ```{python}
 results = pd.concat([
-    checks.check_range(baseline, "barrier_finish_school", 1, 2),
-    checks.check_range(baseline, "info_postsecondary", 1, 5),
-    checks.check_range(baseline, "plan_after_school", 1, 5),
-    checks.check_range(baseline, "plan_feasibility", 1, 5),
-    checks.check_range(baseline, "knows_career", 1, 3),
-    checks.check_range(baseline, "parent_educ_expectation", 1, 4),
-    checks.check_binary(baseline, "enrolled_academy"),
-    checks.check_range(baseline, "belief_univ_transition", 0, 10),
-])
-print(results.to_string(index=False))
-```
-
-### O. Social network
-
-```{python}
-friend_cols = [f"friend{i}_{var}"
-               for i in range(1, 6)
-               for var in ["recess", "homework", "future_talk", "whatsapp"]]
-
-results = pd.concat([
-    checks.check_range(baseline, "num_close_friends", 1, 6),
-    *[checks.check_binary(baseline, c) for c in friend_cols if c in baseline.columns],
-])
-print(results.to_string(index=False))
-```
-
-### I. Salary beliefs
-
-```{python}
-results = pd.concat([
-    checks.check_range(baseline, "salary_secondary", 1, 50000),
-    checks.check_range(baseline, "salary_technical", 1, 50000),
-    checks.check_range(baseline, "salary_university", 1, 50000),
-    checks.check_ordering(baseline,
-                          cols=["salary_secondary", "salary_technical", "salary_university"],
-                          label="salary ordering violated (secondary <= technical <= university)"),
-])
-print(results.to_string(index=False))
-```
-
-### H. Math assessment consistency
-
-```{python}
-correct_cols = ["correct_a1", "correct_a2", "correct_a7", "correct_a8", "correct_a8m",
-                "correct_a4", "correct_a9s", "correct_a3", "correct_a6", "correct_a5"]
-
-results = pd.concat([
-    *[checks.check_binary(baseline, c) for c in correct_cols],
+    checks.check_derived(
+        baseline, "educ_parent_max",
+        formula_fn=lambda df: df[["educ_mother", "educ_father"]].max(axis=1),
+        label="educ_parent_max != max(educ_mother, educ_father)",
+    ),
     checks.check_derived(
         baseline, "score_total_baseline",
         formula_fn=lambda df: df[correct_cols].sum(axis=1),
@@ -461,18 +484,5 @@ results = pd.concat([
         label="score_pct != score_total / 10",
     ),
 ])
-print(results.to_string(index=False))
-```
-
-### J. Derived variable consistency
-
-```{python}
-results = pd.concat([
-    checks.check_derived(
-        baseline, "educ_parent_max",
-        formula_fn=lambda df: df[["educ_mother", "educ_father"]].max(axis=1),
-        label="educ_parent_max != max(educ_mother, educ_father)",
-    ),
-])
-print(results.to_string(index=False))
+utils.gt_check_results(results, title="Derived variable consistency")
 ```
