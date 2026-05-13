@@ -218,6 +218,173 @@ BALANCE_VARS = {
     },
 }
 
+# ── Variable labels ───────────────────────────────────────────────────────────
+VARIABLE_LABELS: dict[str, str] = {
+    # Survey metadata
+    "progress":                    "Survey completion (%)",
+    "duration_min":                "Duration (minutes)",
+    # Demographics
+    "birth_country":               "Birth country",
+    "age":                         "Age",
+    "age_cat":                     "Age category",
+    "female":                      "Female",
+    "male":                        "Male",
+    "female / male":               "Female / Male",
+    "educ_mother":                 "Mother's education",
+    "educ_father":                 "Father's education",
+    "educ_parent_max":             "Parent education (max)",
+    "has_computer":                "Has computer at home",
+    "has_internet":                "Has internet at home",
+    "digital_comfort":             "Digital comfort",
+    "platform_use":                "Platform use",
+    # Academic background
+    "math_grade_prev":             "Prior math grade",
+    "like_math":                   "Likes math",
+    "like_communication":          "Likes communication",
+    "rank_math":                   "Self-rank in math",
+    "rank_communication":          "Self-rank in communication",
+    "mathconf_learn":              "Math confidence: learning",
+    "mathconf_exam":               "Math confidence: exams",
+    "mathconf_help_peers":         "Math confidence: helping peers",
+    "mathconf_growth":             "Math confidence: growth",
+    # Computer lab
+    "lab_productive":              "Lab productivity",
+    "lab_preferred_hours":         "Preferred lab hours",
+    # Hours & study habits
+    "hours_school":                "Hours at school",
+    "hours_study":                 "Hours studying",
+    "hours_friends":               "Hours with friends",
+    "hours_entertainment":         "Hours on entertainment",
+    "hours_housework":             "Hours on housework",
+    "hours_unpaid_work":           "Hours on unpaid work",
+    "hours_paid_work":             "Hours on paid work",
+    "hours_sleep":                 "Hours sleeping",
+    "hours_sport":                 "Hours on sport",
+    "math_study_weekly":           "Math study frequency (weekly)",
+    "study_context":               "Study context",
+    "digital_tools_used":          "Digital tools used",
+    # Grit
+    "grit_challenge":              "Grit: overcomes challenges",
+    "grit_quit_game":              "Grit: quits games (R)",
+    "grit_lose_interest":          "Grit: loses interest (R)",
+    "grit_hardwork":               "Grit: works hard",
+    "grit_avg":                    "Grit (average)",
+    # Growth mindset
+    "mindset_fixed1":              "Fixed mindset item 1",
+    "mindset_fixed2":              "Fixed mindset item 2",
+    "mindset_avg":                 "Growth mindset (average)",
+    # Locus of control
+    "locus_luck":                  "Locus: luck determines outcomes",
+    "locus_fate":                  "Locus: fate determines outcomes",
+    "locus_prepared":              "Locus: being prepared matters",
+    "locus_plans":                 "Locus: plans help succeed",
+    "locus_avg":                   "Locus of control (average)",
+    # Self-efficacy
+    "efficacy_hard_problems":      "Efficacy: solves hard problems",
+    "efficacy_effort":             "Efficacy: persists with effort",
+    "efficacy_calm":               "Efficacy: stays calm",
+    "efficacy_solutions":          "Efficacy: finds solutions",
+    "efficacy_trouble":            "Efficacy: handles trouble",
+    "efficacy_avg":                "Self-efficacy (average)",
+    # Math enjoyment
+    "math_enjoy":                  "Enjoys math",
+    "math_wish_no":                "Wishes not to study math (R)",
+    "math_like_problems":          "Likes math problems",
+    "math_enjoy_avg":              "Math enjoyment (average)",
+    # Math anxiety
+    "math_worry_grades":           "Worried about math grades",
+    "math_nervous_exams":          "Nervous about math exams",
+    "math_anxiety_avg":            "Math anxiety (average)",
+    # Math self-concept
+    "math_does_well":              "Does well in math",
+    "math_harder_than_peers":      "Math harder than peers (R)",
+    "math_selfconcept_avg":        "Math self-concept (average)",
+    # Math attitudes
+    "math_useful":                 "Math is useful",
+    # Belonging
+    "belong_outsider":             "Feels like an outsider",
+    "belong_fits_in":              "Fits in at school",
+    "belonging_avg":               "School belonging (average)",
+    # Metacognition
+    "meta_study_allocation":       "Study time allocation",
+    "meta_when_stuck":             "Strategy when stuck",
+    "meta_hint_use":               "Hint use",
+    "meta_review_errors":          "Reviews errors",
+    "meta_after_mistake":          "Adjusts after mistake",
+    "meta_ai_use":                 "AI use strategy",
+    "meta_expected_exam":          "Expected exam score",
+    "meta_actual_exam":            "Actual exam score",
+    "meta_self_awareness":         "Self-awareness",
+    # Barriers
+    "barrier_finish_school":       "Barrier: finishing school",
+    "barrier_money":               "Barrier: money",
+    "barrier_work_family":         "Barrier: work/family obligations",
+    "barrier_parent_ideas":        "Barrier: parent opinions",
+    "barrier_grades":              "Barrier: grades",
+    "barrier_info_careers":        "Barrier: career information",
+    "barrier_info_institution":    "Barrier: institution information",
+    "barrier_family_resp":         "Barrier: family responsibilities",
+    # Aspirations
+    "info_postsecondary":          "Post-secondary information",
+    "plan_after_school":           "Plan after school",
+    "plan_feasibility":            "Plan feasibility",
+    "knows_career":                "Has identified a career",
+    "institution_first_choice":    "First institution choice",
+    "plan_talks_with":             "Discusses plans with",
+    "parent_educ_expectation":     "Parent's education expectation",
+    "enrolled_academy":            "Enrolled in academy",
+    "belief_univ_transition":      "Belief in university transition",
+    "factors_career_choice":       "Career choice factors",
+    "plans_higher_ed":             "Plans for higher education",
+    "preferred_sector":            "Preferred work sector",
+    "knows_jobs_sector":           "Knows jobs in sector",
+    # Knowledge of opportunities
+    "knows_scholarship":           "Knows about scholarships",
+    "knows_beca18":                "Knows about Beca 18",
+    "knows_alt_training":          "Knows about alternative training",
+    "est_years_technical":         "Estimated years (technical)",
+    "est_years_university":        "Estimated years (university)",
+    # Labor market beliefs
+    "salary_secondary":            "Salary: secondary education",
+    "salary_technical":            "Salary: technical education",
+    "salary_university":           "Salary: university education",
+    "salary_secondary / salary_technical / salary_university":
+                                   "Salary ordering (secondary / technical / university)",
+    "informal_secondary":          "Informality: secondary education",
+    "informal_technical":          "Informality: technical education",
+    "informal_university":         "Informality: university education",
+    # Time & risk preferences
+    "time_pref_100v150":           "Time preference: 100 vs 150",
+    "time_pref_100v300":           "Time preference: 100 vs 300",
+    "risk_pref_100v250":           "Risk preference: 100 vs 250",
+    "risk_pref_100v500":           "Risk preference: 100 vs 500",
+    "patient_low":                 "Patient (low stakes)",
+    "patient_high":                "Patient (high stakes)",
+    "risk_seeking_low":            "Risk-seeking (low stakes)",
+    "risk_seeking_high":           "Risk-seeking (high stakes)",
+    # Social network
+    "num_close_friends":           "Number of close friends",
+    **{f"friend{i}_{rel}": f"Friend {i}: {rel.replace('_', ' ')}"
+       for i in range(1, 6)
+       for rel in ["recess", "homework", "future_talk", "whatsapp"]},
+    # Math assessment items
+    "correct_a1":                  "Math item 1",
+    "correct_a2":                  "Math item 2",
+    "correct_a3":                  "Math item 3",
+    "correct_a4":                  "Math item 4",
+    "correct_a5":                  "Math item 5",
+    "correct_a6":                  "Math item 6",
+    "correct_a7":                  "Math item 7",
+    "correct_a8":                  "Math item 8",
+    "correct_a8m":                 "Math item 8M",
+    "correct_a9s":                 "Math item 9S",
+    # Derived / composite
+    "score_total_baseline":        "Baseline math score (total items)",
+    "score_pct_baseline":          "Baseline math score (%)",
+    # Identifiers
+    "qualtrics_id":                "Student ID (Qualtrics)",
+}
+
 # ── Table rendering ───────────────────────────────────────────────────────────
 
 def gt_check_results(
@@ -231,6 +398,10 @@ def gt_check_results(
     Set show_pass=True to include the Pass column.
     """
     display_df = df.drop(columns=["pass"]) if "pass" in df.columns and not show_pass else df.copy()
+    if "variable" in display_df.columns:
+        display_df["variable"] = display_df["variable"].map(
+            lambda v: VARIABLE_LABELS.get(v, v)
+        )
 
     col_labels = {}
     if "variable" in display_df.columns:    col_labels["variable"]    = "Variable"
@@ -267,8 +438,13 @@ def gt_check_results(
 
 def gt_missing(df: pd.DataFrame, title: str = "Missing values") -> GT:
     """Render a check_missing() result as a formatted great_tables table."""
+    display_df = df.copy()
+    if "variable" in display_df.columns:
+        display_df["variable"] = display_df["variable"].map(
+            lambda v: VARIABLE_LABELS.get(v, v)
+        )
     return (
-        GT(df)
+        GT(display_df)
         .tab_header(title=title)
         .cols_label(
             group="Dimension",
