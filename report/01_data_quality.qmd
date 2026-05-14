@@ -2,15 +2,34 @@
 title: "1. Data Quality Assessment"
 ---
 
+## Assessment approach
+
+Before running any analysis, we systematically assessed the quality of each dataset along several dimensions. The table below summarizes the checks applied to each file.
+
+| Check | Description |
+|---|---|
+| **File overview** | Row and column counts; identification of structurally empty columns |
+| **Missing values** | Missing rate per variable, grouped by thematic block; flagging variables with meaningful missingness |
+| **Duplicates** | Check for duplicate student or record identifiers |
+| **Survey response quality** | Completion rate (`progress`) and response duration (`duration_min`) outliers |
+| **Range validity** | Expected value ranges checked across thematic blocks: demographics, academic background, computer lab, hours & study habits, aspirations, social network, salary beliefs, and math assessment |
+| **Derived variable consistency** | Cross-variable logical checks including scale average replication and reversal checks for reverse-coded items (e.g., grit, math enjoyment, math self-concept), as well as consistency between derived variables and their components (e.g., `educ_parent_max` vs. `educ_mother`/`educ_father`; math score totals vs. item sums) |
+
+Additional dataset-specific checks are described within each section below. Thresholds were set on substantive grounds based on the study codebook and instrument documentation.
+
 ```{python}
 import sys
+import importlib
 sys.path.insert(0, "../src")
 import utils
+import checks
+importlib.reload(utils)
+importlib.reload(checks)
+from great_tables import GT, style, loc, md
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 import seaborn as sns
 
 utils.set_theme()
@@ -24,272 +43,89 @@ voc_chat  = dfs["voc_chat"]
 voc_steps = dfs["voc_steps"]
 ```
 
-## 1.1 Per-file Completeness
+---
 
-Missing values by dataset: proportion of cells missing per variable, and flagging variables above key thresholds.
+## Data sources
 
-```{python}
-def missing_summary(df: pd.DataFrame, name: str) -> pd.DataFrame:
-    n = len(df)
-    missing = df.isnull().sum()
-    pct = missing / n * 100
-    summary = pd.DataFrame({
-        "dataset": name,
-        "variable": missing.index,
-        "n_missing": missing.values,
-        "pct_missing": pct.values,
-    })
-    return summary[summary["n_missing"] > 0].sort_values("pct_missing", ascending=False)
+The study draws on seven datasets from two sources: a Qualtrics baseline survey and interaction logs from the uDocz educational platform.
 
-summaries = pd.concat([
-    missing_summary(baseline,  "baseline"),
-    missing_summary(schools,   "schools"),
-    missing_summary(math_chat, "math_chat"),
-    missing_summary(math_quiz, "math_quiz"),
-    missing_summary(voc_chat,  "voc_chat"),
-    missing_summary(voc_steps, "voc_steps"),
-], ignore_index=True)
+| Dataset | Grain | Description |
+|---|---|---|
+| `baseline_estudiantes` | Student | Pre-treatment survey covering demographics, psychological scales, math assessment, and post-secondary aspirations |
+| `randomizacion_escuelas` | School | School-level treatment assignment and stratification variables used for randomization |
+| `math_chat_casa` | Message | Student–AI math tutoring conversations conducted at home |
+| `math_chat_escuela` | Message | Student–AI math tutoring conversations conducted at school, with topic and correctness data |
+| `math_ponte_prueba` | Quiz attempt | Math quiz interactions from the platform, with correctness indicators |
+| `voc_chat` | Message | Student–AI career guidance conversations across an 8-step vocational journey |
+| `voc_steps` | Student × step | Student-level progress, time spent, and completion across the 8 vocational journey steps |
 
-# High-level counts
-overview = (
-    summaries.groupby("dataset")
-    .agg(
-        vars_any_missing=("variable", "count"),
-        vars_gt10pct=("pct_missing", lambda x: (x > 10).sum()),
-        vars_gt50pct=("pct_missing", lambda x: (x > 50).sum()),
-    )
-    .reset_index()
-)
-print(overview.to_string(index=False))
+---
+
+---
+
+## Dataset assessments
+
+Each dataset is assessed on a dedicated page. Detailed findings, tables, and recommendations are available within each report.
+
+```{=html}
+<table class="table table-bordered" style="table-layout:fixed; width:100%;">
+  <colgroup>
+    <col style="width:15%">
+    <col style="width:40%">
+    <col style="width:45%">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>Dataset</th>
+      <th>Key issues</th>
+      <th>Recommendations</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Baseline student data</strong><br><a href="01a_baseline.html">View report →</a></td>
+      <td>
+        <ul style="margin:0; padding-left:1.2em;">
+          <li>Math assessment correctness systematically miscoded (9/10 items, ~200 affected students each)</li>
+          <li>Near zero internal consistency for all four main psychological scales (Grit, Locus of Control, Self-efficacy, and Metacognition)</li>
+          <li>Several variables contain sentinel or out-of-range codes requiring recoding</li>
+          <li>93 students flagged for low response quality</li>
+        </ul>
+      </td>
+      <td>
+        <ul style="margin:0; padding-left:1.2em;">
+          <li>Verify scoring logic against de-anonymized data and original answer key; recode affected observations and recompute total score</li>
+          <li>Check whether Qualtrics randomized response options; verify inter-item correlations in de-anonymized data before using scale averages</li>
+          <li>Recode all sentinel and out-of-range values to missing as a mandatory preprocessing step</li>
+          <li>Rerun main analyses excluding flagged students as a robustness check; verify gender coding against de-anonymized data</li>
+        </ul>
+      </td>
+    </tr>
+    <tr>
+      <td><strong>Schools randomization</strong></td>
+      <td><em>Pending</em></td>
+      <td><em>Pending</em></td>
+    </tr>
+    <tr>
+      <td><strong>Math chat logs</strong></td>
+      <td><em>Pending</em></td>
+      <td><em>Pending</em></td>
+    </tr>
+    <tr>
+      <td><strong>Math quiz</strong></td>
+      <td><em>Pending</em></td>
+      <td><em>Pending</em></td>
+    </tr>
+    <tr>
+      <td><strong>Vocational chat</strong></td>
+      <td><em>Pending</em></td>
+      <td><em>Pending</em></td>
+    </tr>
+    <tr>
+      <td><strong>Vocational steps</strong></td>
+      <td><em>Pending</em></td>
+      <td><em>Pending</em></td>
+    </tr>
+  </tbody>
+</table>
 ```
-
-### Missing rate heatmap — Baseline survey
-
-The baseline has the most variables (183). Below we show the 30 variables with the highest missing rates.
-
-```{python}
-top_missing_baseline = (
-    summaries[summaries["dataset"] == "baseline"]
-    .head(30)
-    .set_index("variable")["pct_missing"]
-)
-
-fig, ax = plt.subplots(figsize=(10, 6))
-bars = ax.barh(top_missing_baseline.index[::-1], top_missing_baseline.values[::-1], color="#4C72B0")
-ax.axvline(10, color="orange", linestyle="--", linewidth=1, label=">10% threshold")
-ax.axvline(50, color="red",    linestyle="--", linewidth=1, label=">50% threshold")
-ax.set_xlabel("% Missing")
-ax.set_title("Top 30 variables by missing rate — Baseline survey")
-ax.legend()
-plt.tight_layout()
-plt.savefig("../outputs/figures/01_missing_baseline.png", dpi=150)
-plt.show()
-```
-
-## 1.2 Value Validity
-
-### Likert scale ranges (should be 1–5)
-
-```{python}
-scale_cols = utils.SCALE_VARS
-validity_rows = []
-for col in scale_cols:
-    if col in baseline.columns:
-        col_data = baseline[col].dropna()
-        out_of_range = ((col_data < 1) | (col_data > 5)).sum()
-        validity_rows.append({
-            "variable": col,
-            "min": col_data.min(),
-            "max": col_data.max(),
-            "out_of_range": out_of_range,
-        })
-
-scale_validity = pd.DataFrame(validity_rows)
-print(scale_validity.to_string(index=False))
-```
-
-### Binary variables (should be 0 or 1)
-
-```{python}
-binary_cols = ["female", "has_computer", "has_internet", "knows_career",
-               "knows_scholarship", "knows_beca18", "enrolled_academy"]
-
-bin_rows = []
-for col in binary_cols:
-    if col in baseline.columns:
-        unique_vals = baseline[col].dropna().unique()
-        invalid = [v for v in unique_vals if v not in (0, 1, 0.0, 1.0)]
-        bin_rows.append({
-            "variable": col,
-            "unique_values": sorted(unique_vals),
-            "invalid_values": invalid if invalid else "none",
-        })
-
-print(pd.DataFrame(bin_rows).to_string(index=False))
-```
-
-### Platform timestamp checks
-
-Check that timestamps are chronologically plausible (no future dates, no pre-study dates).
-
-```{python}
-STUDY_START = pd.Timestamp("2023-01-01")
-STUDY_END   = pd.Timestamp("2025-12-31")
-
-for name, df, col in [
-    ("math_chat", math_chat, "ts_created"),
-    ("math_quiz", math_quiz, "ts_created"),
-    ("voc_chat",  voc_chat,  "ts_created"),
-]:
-    ts = pd.to_datetime(df[col], errors="coerce")
-    n_null      = ts.isnull().sum()
-    n_before    = (ts < STUDY_START).sum()
-    n_after     = (ts > STUDY_END).sum()
-    print(f"{name}: null={n_null}, before study={n_before}, after study={n_after}")
-```
-
-### Chat message length outliers
-
-```{python}
-fig, axes = plt.subplots(1, 2, figsize=(11, 4))
-
-for ax, (df, label) in zip(axes, [(math_chat, "Math chat"), (voc_chat, "Voc chat")]):
-    student_msgs = df[df["is_student"] == 1]["msg_length"].dropna()
-    ax.hist(student_msgs.clip(upper=student_msgs.quantile(0.99)), bins=50, color="#4C72B0", edgecolor="white")
-    ax.set_title(f"{label} — student message length (clipped at 99th pct)")
-    ax.set_xlabel("Characters")
-
-plt.tight_layout()
-plt.savefig("../outputs/figures/01_msg_length_dist.png", dpi=150)
-plt.show()
-```
-
-## 1.3 Merge Quality
-
-How many students from the baseline appear in each platform dataset?
-
-```{python}
-baseline_ids  = set(baseline["qualtrics_id"].dropna())
-school_ids    = set(schools["school_id"].dropna())
-baseline_schools = set(baseline["school_code"].dropna())
-
-# Platform user IDs
-math_chat_ids = set(math_chat["user_id"].dropna())
-math_quiz_ids = set(math_quiz["user_id"].dropna())
-voc_chat_ids  = set(voc_chat["user_id"].dropna())
-voc_steps_ids = set(voc_steps["school_user_id"].dropna())
-
-# Coverage relative to baseline
-rows = []
-for label, platform_ids in [
-    ("math_chat (home + school)", math_chat_ids),
-    ("math_quiz",                 math_quiz_ids),
-    ("voc_chat",                  voc_chat_ids),
-    ("voc_steps",                 voc_steps_ids),
-]:
-    in_both   = len(baseline_ids & platform_ids)
-    only_base = len(baseline_ids - platform_ids)
-    only_plat = len(platform_ids - baseline_ids)
-    rows.append({
-        "dataset": label,
-        "in_baseline_only": only_base,
-        "matched": in_both,
-        "in_platform_only": only_plat,
-        "baseline_coverage_%": round(in_both / len(baseline_ids) * 100, 1) if baseline_ids else None,
-    })
-
-coverage = pd.DataFrame(rows)
-print(coverage.to_string(index=False))
-```
-
-```{python}
-# School ID cross-validation
-in_both   = baseline_schools & school_ids
-only_base = baseline_schools - school_ids
-only_rand = school_ids - baseline_schools
-
-print(f"School IDs in both baseline and randomization file: {len(in_both)}")
-print(f"In baseline only:        {len(only_base)} — {sorted(only_base)}")
-print(f"In randomization only:   {len(only_rand)} — {sorted(only_rand)}")
-```
-
-### ID coverage bar chart
-
-```{python}
-fig, ax = plt.subplots(figsize=(9, 4))
-x = range(len(coverage))
-ax.bar(x, coverage["baseline_coverage_%"], color="#4C72B0")
-ax.set_xticks(list(x))
-ax.set_xticklabels(coverage["dataset"], rotation=15, ha="right")
-ax.set_ylabel("% of baseline students found in platform")
-ax.set_ylim(0, 110)
-ax.set_title("Platform coverage of baseline sample")
-for i, v in enumerate(coverage["baseline_coverage_%"]):
-    ax.text(i, v + 1, f"{v}%", ha="center", fontsize=10)
-plt.tight_layout()
-plt.savefig("../outputs/figures/01_id_coverage.png", dpi=150)
-plt.show()
-```
-
-## 1.4 Data Quality Summary
-
-```{python}
-# Scorecard: one row per dataset
-scorecard_rows = [
-    {
-        "Dataset": "baseline_estudiantes",
-        "Rows": len(baseline),
-        "Variables": len(baseline.columns),
-        "Vars >10% missing": (baseline.isnull().mean() > 0.10).sum(),
-        "Vars >50% missing": (baseline.isnull().mean() > 0.50).sum(),
-        "Key issues": "—",
-    },
-    {
-        "Dataset": "randomizacion_escuelas",
-        "Rows": len(schools),
-        "Variables": len(schools.columns),
-        "Vars >10% missing": (schools.isnull().mean() > 0.10).sum(),
-        "Vars >50% missing": (schools.isnull().mean() > 0.50).sum(),
-        "Key issues": "—",
-    },
-    {
-        "Dataset": "math_chat (combined)",
-        "Rows": len(math_chat),
-        "Variables": len(math_chat.columns),
-        "Vars >10% missing": (math_chat.isnull().mean() > 0.10).sum(),
-        "Vars >50% missing": (math_chat.isnull().mean() > 0.50).sum(),
-        "Key issues": "—",
-    },
-    {
-        "Dataset": "math_ponte_prueba",
-        "Rows": len(math_quiz),
-        "Variables": len(math_quiz.columns),
-        "Vars >10% missing": (math_quiz.isnull().mean() > 0.10).sum(),
-        "Vars >50% missing": (math_quiz.isnull().mean() > 0.50).sum(),
-        "Key issues": "—",
-    },
-    {
-        "Dataset": "voc_chat",
-        "Rows": len(voc_chat),
-        "Variables": len(voc_chat.columns),
-        "Vars >10% missing": (voc_chat.isnull().mean() > 0.10).sum(),
-        "Vars >50% missing": (voc_chat.isnull().mean() > 0.50).sum(),
-        "Key issues": "—",
-    },
-    {
-        "Dataset": "voc_steps",
-        "Rows": len(voc_steps),
-        "Variables": len(voc_steps.columns),
-        "Vars >10% missing": (voc_steps.isnull().mean() > 0.10).sum(),
-        "Vars >50% missing": (voc_steps.isnull().mean() > 0.50).sum(),
-        "Key issues": "—",
-    },
-]
-scorecard = pd.DataFrame(scorecard_rows)
-print(scorecard.to_string(index=False))
-scorecard.to_csv("../outputs/tables/01_data_quality_scorecard.csv", index=False)
-```
-
-::: {.callout-note}
-The **Key issues** column will be filled in manually after reviewing the outputs above.
-:::

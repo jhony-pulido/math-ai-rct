@@ -35,24 +35,31 @@ math-ai-rct/
 - [x] Set up Python virtual environment + `requirements.txt`
 - [x] Configure Quarto project (`_quarto.yml`) targeting HTML output
 - [x] Create stub `.qmd` files and `src/utils.py`
+- [x] Connect local repo to GitHub (GitHub Desktop)
+- [x] Anonymize raw data: create `src/anonymize.py` and `data_public/`
+- [x] Create school crosswalk (`data/crosswalk_schools.csv`)
 
 ---
 
-## Phase 1 — Data Quality Assessment (`01_data_quality.qmd`)
+## Phase 1 — Data Quality Assessment (`01_data_quality.qmd`) 🔄
 
-### 1a. Per-file completeness
-- Missing rate per variable and per row, with a heatmap
-- Flag variables with >10% and >50% missing
+### Setup
+- [x] Create `src/checks.py` with 12 reusable quality check functions
+- [x] Add assessment approach section to `01_data_quality.qmd`
+- [x] Create `phase-1-data-quality` branch
 
-### 1b. Value validity
-- Range checks on Likert scales (1–5), binary variables (0/1), timestamps (chronological order)
-- Implausible values: negative message lengths, duplicate message IDs, zero-length conversations
+### Per-file assessment plans
+- [x] `baseline_estudiantes` — detailed plan finalized (15 sections: A–O)
+- [ ] `randomizacion_escuelas`
+- [ ] `math_chat_casa` / `math_chat_escuela`
+- [ ] `math_ponte_prueba`
+- [ ] `voc_chat`
+- [ ] `voc_steps`
 
-### 1c. Merge quality
-- How many students in `baseline_estudiantes` appear in each platform file?
-- Orphaned platform IDs (users with no baseline record)
-- Cross-validate school IDs between `randomizacion_escuelas` and `baseline_estudiantes`
-- UpSet plot or coverage table across datasets
+### Implementation
+- [ ] Write `baseline_estudiantes` checks in `01_data_quality.qmd`
+- [ ] Write remaining file checks
+- [ ] Data quality scorecard (summary table across all files)
 
 **Deliverable:** Summary table of issues per dataset + data quality scorecard
 

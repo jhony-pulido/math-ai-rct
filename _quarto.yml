@@ -8,8 +8,12 @@ website:
     left:
       - href: report/00_index.qmd
         text: Overview
-      - href: report/01_data_quality.qmd
-        text: Data Quality
+      - text: Data Quality
+        menu:
+          - href: report/01_data_quality.qmd
+            text: Overview
+          - href: report/01a_baseline.qmd
+            text: Baseline Student Data
       - href: report/02_descriptives.qmd
         text: Descriptives
       - href: report/03_balance.qmd
