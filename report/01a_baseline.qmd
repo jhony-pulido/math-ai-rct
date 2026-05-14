@@ -1,0 +1,1062 @@
+---
+title: "1a. Baseline Student Data — Quality Assessment"
+---
+
+```{python}
+import sys
+import importlib
+sys.path.insert(0, "../src")
+import utils
+import checks
+importlib.reload(utils)
+importlib.reload(checks)
+from great_tables import GT, style, loc, md
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+utils.set_theme()
+
+dfs = utils.load_all()
+baseline  = dfs["baseline"]
+```
+
+---
+
+## Student Baseline Data: Survey and Test
+
+### Key findings
+
+**1. Math assessment correctness is systematically miscoded.** Nine of ten items have false negatives at scale: between 189 and 221 students per item selected the correct answer but are coded 0 in the corresponding `correct_*` variable. The baseline math score is likely underestimated for 16–18% of students per item — directly compromising the study's primary cognitive outcome measure. 
+**Recommendation:** verify the scoring logic against the de-anonymized data and original answer key, recode the affected observations, and recompute the total score before any analysis.
+
+**2. Internal consistency of psychological scales is unexpectedly near zero.** Cronbach's alpha is effectively 0 for all four psychological scales with four or more items (Grit, Locus of control, Self-efficacy, Metacognition), far below the conventional 0.7 threshold. This raises questions about whether the scale averages measure the intended constructs — undermining their use as covariates, moderators, or secondary outcomes. The source of the problem cannot be determined from the anonymized dataset alone. 
+**Recommendation:** check whether Qualtrics randomized response option order across respondents and verify inter-item correlations in the de-anonymized data before using these scales in analysis.
+
+**3. Several variables contain sentinel values or out-of-range codes that must be recoded before analysis.** Key cases include hours studying per day (38 values coded 99), salary for secondary education (19 values coded −999 and 1 negative), self-rank in math (4 values coded 99 and 3 coded 15), belief in university transition (4 coded 15 and 1 coded 999), and digital comfort (2 coded 7). Left untreated, these values will distort means, regressions, and any analysis involving these variables. 
+**Recommendation:** recode all identified sentinel and out-of-range values to missing as a mandatory preprocessing step.
+
+**4. Response quality flags identify 93 students warranting scrutiny in sensitivity analyses.** 23 surveys are incomplete (stopped mid-survey at 30–47% progress) and 76 fall outside the plausible duration range of 15–60 minutes (54 too fast, 22 too long). These students may have provided less reliable responses across all variables. Additionally, the `female` and `male` variables are identically coded, making gender assignment ambiguous without access to the de-anonymized data. 
+**Recommendation:** rerun all main analyses excluding these students as a robustness check, and verify gender coding against the de-anonymized data.
+
+### A. File overview
+
+Row and column counts; identification of structurally empty columns (conditional free-text fields never filled in).
+
+```{python}
+print(f"Rows: {len(baseline):,}  |  Columns: {len(baseline.columns)}")
+
+empty_cols = checks.check_column_empty(baseline)
+print(f"\nStructurally empty columns ({len(empty_cols)}):")
+print(empty_cols[["variable"]].to_string(index=False))
+```
+
+::: {.callout-note}
+The public dataset contains 1,203 students and 168 variables (183 in the raw data; 15 dropped during anonymization to remove personally identifiable information). Two variables are structurally empty (100% missing): `career_first_choice` and `action_3months`. Both are conditional free-text fields that were never filled in, likely because survey skip logic routed most respondents away from them. They are excluded from all subsequent checks.
+:::
+
+```{python}
+baseline = baseline.drop(columns=empty_cols["variable"].tolist())
+```
+
+### B. Missing values
+
+Missing rate per variable, grouped by thematic block. Structurally empty columns excluded.
+
+```{python}
+missing_results = pd.concat([
+    checks.check_missing(baseline, cols=[c for c in cols if c in baseline.columns],
+                         group_label=block)
+    for block, cols in utils.BASELINE_VARS.items()
+], ignore_index=True)
+
+total_vars = sum(len(cols) for cols in utils.BASELINE_VARS.values())
+vars_with_missing = len(missing_results)
+print(f"{vars_with_missing} of {total_vars} variables have at least one missing value.")
+
+utils.gt_missing(missing_results, title="Variables with missing values — Baseline survey")
+```
+
+::: {.callout-note}
+Only 6 of 162 variables have missing values. Missing rates are low across the board: `educ_father` (8.5%) and `age`/`age_cat` (4.0%, same students) in the demographics block; and the three salary expectation variables (13.6%–16.0%) in the labor market beliefs block, reflecting students who skipped that module. All other variables are fully observed.
+:::
+
+### C. Duplicates
+
+```{python}
+dup_results = checks.check_duplicates(baseline, "qualtrics_id")
+utils.gt_check_results(dup_results, title="Duplicate check — qualtrics_id")
+```
+
+::: {.callout-note}
+No duplicate student identifiers found. Each of the 1,203 rows corresponds to a unique student.
+:::
+
+### D. Survey response quality
+
+Flag incomplete surveys (`progress` < 100) and outliers in response duration.
+
+```{python}
+results = pd.concat([
+    checks.check_range(baseline, "progress", 100, 100),
+    checks.check_range(baseline, "duration_min", 15, 60),
+])
+utils.gt_check_results(results, title="Survey response quality")
+```
+
+::: {.callout-warning}
+Two response quality issues were identified. First, 23 students (1.9%) did not complete the survey — all stopped between 30–47% progress, suggesting dropout during a specific mid-survey section; their duration (mean: 36.7 min) is comparable to complete surveys (mean: 35.3 min), indicating these were not quick abandons. Second, 76 students (6.3%) fall outside the plausible duration range of 15–60 minutes: 54 completed too quickly (< 15 min, possibly inattentive) and 22 took too long (> 60 min, possibly distracted or interrupted). These students should be flagged as potentially low-quality responses in subsequent analyses.
+:::
+
+::: {.callout-note collapse="true"}
+## Incomplete survey detail
+
+```{python}
+from scipy import stats
+
+incomplete = baseline[baseline["progress"] < 100][["progress", "duration_min"]].sort_values("progress")
+complete   = baseline[baseline["progress"] == 100]["duration_min"]
+
+# Progress at dropout
+col1 = incomplete["progress"].value_counts().sort_index().reset_index()
+col1.columns = ["Progress (%)", "N Students"]
+print("Progress at dropout:")
+print(col1.to_string(index=False))
+
+# Duration comparison + t-test
+t_stat, p_val = stats.ttest_ind(incomplete["duration_min"], complete)
+dur_comparison = pd.DataFrame({
+    "Group": ["Incomplete (n=23)", "Complete (n=1,180)"],
+    "Mean duration (min)": [
+        round(incomplete["duration_min"].mean(), 1),
+        round(complete.mean(), 1),
+    ],
+    "SD": [
+        round(incomplete["duration_min"].std(), 1),
+        round(complete.std(), 1),
+    ],
+})
+print("\nDuration comparison:")
+print(dur_comparison.to_string(index=False))
+print(f"\nt-statistic: {t_stat:.3f}  |  p-value: {p_val:.3f}")
+```
+:::
+
+```{python}
+# Response quality flags for use in downstream analyses
+baseline = baseline.copy()
+baseline["flag_incomplete"] = (baseline["progress"] < 100).astype(int)
+baseline["flag_duration"]   = ((baseline["duration_min"] < 15) | (baseline["duration_min"] > 60)).astype(int)
+baseline["flag_low_quality"] = ((baseline["flag_incomplete"] == 1) | (baseline["flag_duration"] == 1)).astype(int)
+
+print(f"flag_incomplete:  {baseline['flag_incomplete'].sum()} students")
+print(f"flag_duration:    {baseline['flag_duration'].sum()} students")
+print(f"flag_low_quality: {baseline['flag_low_quality'].sum()} students (union of both)")
+```
+
+### E. Range validity
+
+#### Demographics
+
+```{python}
+results = pd.concat([
+    checks.check_range(baseline, "age", 14, 19),
+    checks.check_consistency(baseline, "female", "male",
+                              label="female + male != 1"),
+    checks.check_allowed_values(baseline, "educ_mother",
+                                 allowed=list(range(1, 11)) + [12]),
+    checks.check_allowed_values(baseline, "educ_father",
+                                 allowed=list(range(1, 11)) + [12]),
+    checks.check_binary(baseline, "has_computer"),
+    checks.check_binary(baseline, "has_internet"),
+    checks.check_range(baseline, "digital_comfort", 1, 5),
+    checks.check_range(baseline, "platform_use", 1, 4),
+])
+utils.gt_check_results(results, title="Range validity — Demographics")
+```
+
+::: {.callout-warning}
+Two issues found. First, `female` and `male` are not complements: both variables are identically coded, so one of them is mislabeled or both share a coding error. The anonymized dataset does not contain enough information to determine which encoding is correct — researchers should inspect the de-anonymized data to resolve this before using either variable in analysis.
+
+Second, two students (0.2%) have `digital_comfort` = 7, outside the expected [1–5] scale. These are likely data-entry errors and should be treated as missing in any analysis using this variable.
+
+All other variables pass their checks: age is within [14–19], parental education codes are valid, computer and internet access are clean binary indicators, and platform use is within [1–4].
+:::
+
+#### Academic background and perceptions
+
+```{python}
+results = pd.concat([
+    checks.check_range(baseline, "math_grade_prev", 1, 4),
+    checks.check_range(baseline, "like_math", 1, 5),
+    checks.check_range(baseline, "like_communication", 1, 5),
+    checks.check_range(baseline, "mathconf_learn", 1, 4),
+    checks.check_range(baseline, "mathconf_exam", 1, 4),
+    checks.check_range(baseline, "mathconf_help_peers", 1, 4),
+    checks.check_range(baseline, "mathconf_growth", 1, 4),
+    checks.check_range(baseline, "rank_math", 1, 10),
+    checks.check_range(baseline, "rank_communication", 1, 10),
+])
+utils.gt_check_results(results, title="Range validity — Academic background and perceptions")
+```
+
+::: {.callout-warning}
+One issue found. `rank_math` has 7 out-of-range values (0.6%): 4 students coded as 99 — likely a sentinel value for missing or not applicable — and 3 students coded as 15, which falls outside the [1–10] scale and may reflect a data-entry error. Both groups should be treated as missing in analyses using this variable.
+
+All other variables pass their checks: prior math grade, math and communication subject preferences, all four math confidence items, and self-rank in communication are all within their expected ranges.
+:::
+
+#### Computer lab
+
+```{python}
+results = pd.concat([
+    checks.check_range(baseline, "lab_productive", 1, 5),
+    checks.check_range(baseline, "lab_preferred_hours", 1, 15),
+])
+utils.gt_check_results(results, title="Range validity — Computer lab")
+```
+
+::: {.callout-note}
+Both variables pass their range checks. However, `lab_preferred_hours` only takes values 1–8 (out of the allowed 1–15) and is nearly uniformly distributed across those eight values.
+:::
+
+::: {.callout-note collapse="true"}
+## Preferred lab hours (per week) distribution
+
+```{python}
+fig, ax = plt.subplots(figsize=(5, 2.5))
+counts = baseline["lab_preferred_hours"].value_counts().sort_index()
+ax.bar(counts.index, counts.values, color="#4C72B0", edgecolor="white")
+ax.set_xlabel(utils.VARIABLE_LABELS["lab_preferred_hours"])
+ax.set_ylabel("N students")
+ax.set_xticks(counts.index)
+ax.xaxis.grid(False)
+plt.tight_layout()
+plt.show()
+```
+:::
+
+#### Hours budget and study habits
+
+```{python}
+HOURS_COLS = ["hours_school", "hours_study", "hours_friends", "hours_entertainment",
+              "hours_housework", "hours_unpaid_work", "hours_paid_work",
+              "hours_sleep", "hours_sport"]
+zero_exempt = ["hours_unpaid_work", "hours_paid_work"]
+
+hours_results = checks.check_hours_budget(
+    baseline,
+    hours_cols=HOURS_COLS,
+    min_total=10,
+    max_total=24,
+    zero_exempt=zero_exempt,
+    high_threshold=12,
+)
+utils.gt_check_results(
+    hours_results["zeroes"].rename(columns={"n_zero": "n_flagged", "pct_zero": "pct_flagged"}),
+    title="Range validity — Unexpected zeroes in hours variables"
+)
+```
+
+::: {.callout-note}
+Zero values are plausible for all flagged variables. `hours_sport` has the highest zero rate (17.8%), consistent with many students not participating in sport. Zero rates for `hours_housework` (7.4%), `hours_friends` (4.7%), `hours_study` (3.8%), and `hours_entertainment` (2.8%) are modest and substantively defensible. `hours_school` and `hours_sleep` have no zeroes.
+:::
+
+```{python}
+utils.gt_check_results(
+    hours_results["high_values"],
+    title="Range validity — Abnormally high values in hours variables"
+)
+```
+
+::: {.callout-warning}
+`hours_study` has 38 values (3.2%) above the 12-hour threshold — all equal to 99, a sentinel code for missing or not applicable. These should be recoded to missing before any analysis. All other hours variables are clean.
+:::
+
+::: {.callout-note collapse="true"}
+## Hours studying distribution
+
+```{python}
+fig, ax = plt.subplots(figsize=(6, 3))
+counts = baseline["hours_study"].value_counts().sort_index()
+regular = counts[counts.index != 99]
+sentinel = counts[counts.index == 99]
+
+positions = list(range(len(regular)))
+labels = [str(v) for v in regular.index]
+
+ax.bar(positions, regular.values, color="#4C72B0", edgecolor="white")
+if not sentinel.empty:
+    gap_pos = positions[-1] + 2
+    ax.bar([gap_pos], sentinel.values, color="#C0392B", edgecolor="white")
+    positions.append(gap_pos)
+    labels.append("99\n(sentinel)")
+
+ax.set_xticks(positions)
+ax.set_xticklabels(labels)
+ax.set_xlabel(utils.VARIABLE_LABELS["hours_study"])
+ax.set_ylabel("N students")
+ax.xaxis.grid(False)
+plt.tight_layout()
+plt.show()
+```
+:::
+
+```{python}
+baseline_hours = baseline.copy()
+baseline_hours["hours_study"] = baseline_hours["hours_study"].replace(99, pd.NA)
+
+hours_budget = checks.check_hours_budget(
+    baseline_hours,
+    hours_cols=HOURS_COLS,
+    min_total=10,
+    max_total=24,
+    zero_exempt=zero_exempt,
+    high_threshold=12,
+)
+utils.gt_check_results(hours_budget["budget"], title="Range validity — Total daily hours (sentinel values excluded)")
+```
+
+::: {.callout-note}
+810 students (67.3%) have daily hour totals above 24, suggesting that children tended to misallocate their daily hours, overestimating the time devoted to individual activities. No students fall below 10 hours. However, the overallocation is modest: the mean total is 25.6 hours and the median 25.5 hours — just 1.5 hours above the physical limit — with a tight standard deviation of 2.9 hours. No student exceeds 40 hours, and only 5% exceed 30 hours; the vast majority of the excess is concentrated in the 24–30 hour band (62.3% of students), suggesting a rounding and estimation artifact rather than severe measurement error. This still limits confidence in the hours variables as literal time measures — individual values are likely upward-biased and relative magnitudes across activities may be unreliable — but the variables are defensibly used as ordinal signals of relative effort. Further mitigation applies: the overestimation appears systematic rather than random, so cross-student comparisons may still be informative; structured activities such as `hours_school` and `hours_sleep` have tighter and more plausible distributions than discretionary ones; and if the interest is in relative time allocation across activities, the inflation partially cancels out when computing shares.
+:::
+
+::: {.callout-note collapse="true"}
+## Total daily hours — summary statistics (sentinel values excluded)
+
+```{python}
+totals = baseline_hours[HOURS_COLS].sum(axis=1)
+
+stats = pd.DataFrame({
+    "Statistic": ["N", "Mean", "Std. dev.", "Min", "25th pct.", "Median", "75th pct.", "90th pct.", "Max"],
+    "Value": [
+        f"{len(totals):,}",
+        f"{totals.mean():.1f}",
+        f"{totals.std():.1f}",
+        f"{totals.min():.1f}",
+        f"{totals.quantile(0.25):.1f}",
+        f"{totals.median():.1f}",
+        f"{totals.quantile(0.75):.1f}",
+        f"{totals.quantile(0.90):.1f}",
+        f"{totals.max():.1f}",
+    ],
+})
+
+ranges = pd.DataFrame({
+    "Range": ["≤ 24 hours", "24–30 hours", "30–40 hours", "> 40 hours"],
+    "N": [
+        (totals <= 24).sum(),
+        ((totals > 24) & (totals <= 30)).sum(),
+        ((totals > 30) & (totals <= 40)).sum(),
+        (totals > 40).sum(),
+    ],
+})
+ranges["% of students"] = (ranges["N"] / len(totals) * 100).round(1)
+
+print("Summary statistics — total daily hours:")
+print(stats.to_string(index=False))
+print()
+print("Distribution by range:")
+print(ranges.to_string(index=False))
+```
+:::
+
+
+```{python}
+study_results = pd.concat([
+    checks.check_range(baseline, "math_study_weekly", 1, 5),
+    checks.check_range(baseline, "study_context", 1, 4),
+    checks.check_range(baseline, "digital_tools_used", 1, 5),
+])
+utils.gt_check_results(study_results, title="Range validity — Study habits")
+```
+
+::: {.callout-note}
+All three study habits variables pass their range checks.
+:::
+
+
+#### Aspirations
+
+```{python}
+results = pd.concat([
+    checks.check_range(baseline, "barrier_finish_school", 1, 2),
+    checks.check_range(baseline, "info_postsecondary", 1, 5),
+    checks.check_range(baseline, "plan_after_school", 1, 5),
+    checks.check_range(baseline, "plan_feasibility", 1, 5),
+    checks.check_range(baseline, "knows_career", 1, 3),
+    checks.check_range(baseline, "parent_educ_expectation", 1, 4),
+    checks.check_binary(baseline, "enrolled_academy"),
+    checks.check_range(baseline, "belief_univ_transition", 0, 10),
+])
+utils.gt_check_results(results, title="Range validity — Aspirations")
+```
+
+::: {.callout-warning}
+One issue found. `belief_univ_transition` has 5 out-of-range values (0.4%): 4 students coded as 15 and 1 coded as 999. The value 15 falls outside the [0–10] scale and is likely a data-entry error; 999 is a sentinel for missing or not applicable. Both should be treated as missing in any analysis using this variable.
+
+All other variables pass their checks.
+:::
+
+#### Social network
+
+```{python}
+friend_cols = [f"friend{i}_{var}"
+               for i in range(1, 6)
+               for var in ["recess", "homework", "future_talk", "whatsapp"]]
+
+results = pd.concat([
+    checks.check_range(baseline, "num_close_friends", 1, 6),
+    *[checks.check_binary(baseline, c) for c in friend_cols if c in baseline.columns],
+])
+utils.gt_check_results(results, title="Range validity — Social network")
+```
+
+::: {.callout-note}
+All variables are within their expected ranges.
+:::
+
+```{python}
+# Consistency check: number of friend slots answered vs. reported close friends.
+# Coding: num_close_friends = 1 → 0 friends, 2 → 1 friend, ..., 6 → 5+ friends.
+rel_vars = ["recess", "homework", "future_talk", "whatsapp"]
+
+n_answered = pd.Series(0, index=baseline.index)
+for i in range(1, 6):
+    cols_i = [f"friend{i}_{v}" for v in rel_vars if f"friend{i}_{v}" in baseline.columns]
+    n_answered += (baseline[cols_i] == 1).any(axis=1).astype(int)
+
+ncf_labels = {1: "0 friends", 2: "1 friend", 3: "2 friends",
+              4: "3 friends", 5: "4 friends", 6: "5+ friends"}
+ncf_labeled = baseline["num_close_friends"].map(ncf_labels)
+
+col_order = list(ncf_labels.values())
+matrix = (pd.crosstab(n_answered, ncf_labeled,
+                      rownames=["Friends answered about"],
+                      colnames=["Reported close friends"])
+          .reindex(index=range(0, 6), columns=col_order, fill_value=0))
+
+display_matrix = matrix.reset_index()
+display_matrix.columns.name = None
+row_col = "Friends answered about"
+
+total_row = pd.DataFrame([{row_col: "Total", **matrix.sum().to_dict()}])
+display_matrix = pd.concat([display_matrix, total_row], ignore_index=True)
+
+# Violation cells: students answered about more friends than they reported.
+# Column "k friends" → violations in rows where answered > k.
+violation_map = {
+    "0 friends": [1, 2, 3, 4, 5],
+    "1 friend":  [2, 3, 4, 5],
+    "2 friends": [3, 4, 5],
+    "3 friends": [4, 5],
+    "4 friends": [5],
+}
+
+gt = (
+    GT(display_matrix)
+    .tab_header(title="Consistency check — Friends answered about vs. reported close friends")
+    .tab_spanner(label="Reported # close friends", columns=col_order)
+    .tab_style(style=style.text(weight="bold"), locations=loc.title())
+    .tab_style(
+        style=style.borders(sides="top", weight="2px", color="#333333"),
+        locations=loc.body(rows=[0]),
+    )
+    .tab_style(
+        style=style.text(weight="bold"),
+        locations=loc.body(columns=[row_col]),
+    )
+    .tab_style(
+        style=style.borders(sides="right", weight="2px", color="#333333"),
+        locations=loc.body(columns=[row_col]),
+    )
+    .tab_style(
+        style=style.borders(sides="right", weight="2px", color="#333333"),
+        locations=loc.column_labels(columns=[row_col]),
+    )
+    .tab_style(
+        style=[style.text(weight="bold"), style.borders(sides="top", weight="2px", color="#333333")],
+        locations=loc.body(rows=[len(display_matrix) - 1]),
+    )
+)
+for col, rows in violation_map.items():
+    gt = gt.tab_style(
+        style=style.fill(color="#FDECEA"),
+        locations=loc.body(rows=rows, columns=[col]),
+    )
+gt
+```
+
+::: {.callout-warning}
+The matrix reveals a near-complete failure of the expected consistency between `num_close_friends` and the friend relationship indicators. Three patterns stand out. First, no student answered about fewer than 3 friends — rows 0, 1, and 2 are entirely empty across all columns. Second, the vast majority of students in every column are concentrated in row 5 (answered about all 5 friends): this holds even for students who reported 0 friends (190 of 217) or 1 friend (168 of 184). Third, the only column that behaves correctly is "5+ friends," where answering about 5 slots is indeed the expected response (180 of 197 students). The red cells — which cover nearly all entries for columns "0 friends" through "4 friends" — confirm that violations are structural rather than isolated. This strongly suggests the Qualtrics skip logic did not route students past the friend detail questions based on their reported friend count. Researchers should verify this against the de-anonymized data and survey administration records before using the friend relationship variables in analysis.
+:::
+
+#### Salary beliefs
+
+```{python}
+results = pd.concat([
+    checks.check_range(baseline, "salary_secondary", 1, 50000),
+    checks.check_range(baseline, "salary_technical", 1, 50000),
+    checks.check_range(baseline, "salary_university", 1, 50000),
+    checks.check_ordering(baseline,
+                          cols=["salary_secondary", "salary_technical", "salary_university"],
+                          label="salary ordering violated (secondary <= technical <= university)"),
+])
+(
+    utils.gt_check_results(results, title="Range validity — Salary beliefs")
+    .tab_source_note(md("**Note:** ordering check restricted to students with non-missing values for all three salary variables (n = 738)."))
+)
+```
+
+::: {.callout-warning}
+Three issues found. First, `salary_secondary` has 20 out-of-range values (1.7%): 19 coded as −999 (a sentinel for missing or not applicable) and 1 coded as −161 (likely a data-entry error). Both should be treated as missing. Second, `salary_university` has 2 negative values (−296 and −78), also likely data-entry errors that should be treated as missing.
+
+Third, among the 738 students who answered all three salary questions, 222 (30.1%) report a salary ordering that violates the expected pattern (secondary ≤ technical ≤ university). This is a substantively high rate and likely reflects genuine heterogeneity in students' beliefs about returns to education — for instance, some may believe technical training yields similar or higher earnings than a university degree in certain sectors — rather than data errors. These cases should be retained and interpreted as informative belief measures rather than flagged for exclusion.
+:::
+
+#### Math assessment items
+
+```{python}
+correct_cols = ["correct_a1", "correct_a2", "correct_a3", "correct_a4", "correct_a5",
+                "correct_a6", "correct_a7", "correct_a8", "correct_a8m", "correct_a9s"]
+
+results = pd.concat([
+    *[checks.check_binary(baseline, c) for c in correct_cols],
+    checks.check_range(baseline, "score_total_baseline", 0, 10),
+    checks.check_range(baseline, "score_pct_baseline", 0, 1),
+])
+utils.gt_check_results(results, title="Range validity — Math assessment items")
+```
+
+::: {.callout-note}
+All items are valid binary indicators.
+:::
+
+#### Psychological scales
+
+```{python}
+# ── Grit (1–5) ────────────────────────────────────────────────────────────────
+grit_items = ["grit_challenge", "grit_quit_game", "grit_lose_interest", "grit_hardwork"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 5) for c in grit_items],
+    checks.check_range(baseline, "grit_avg", 1, 5),
+])
+utils.gt_check_results(results, title="Range validity — Grit")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Growth mindset (1–6) ──────────────────────────────────────────────────────
+mindset_items = ["mindset_fixed1", "mindset_fixed2"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 6) for c in mindset_items],
+    checks.check_range(baseline, "mindset_avg", 1, 6),
+])
+utils.gt_check_results(results, title="Range validity — Growth mindset")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Locus of control (1–5) ────────────────────────────────────────────────────
+locus_items = ["locus_luck", "locus_fate", "locus_prepared", "locus_plans"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 5) for c in locus_items],
+    checks.check_range(baseline, "locus_avg", 1, 5),
+])
+utils.gt_check_results(results, title="Range validity — Locus of control")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Self-efficacy (1–4) ───────────────────────────────────────────────────────
+efficacy_items = ["efficacy_hard_problems", "efficacy_effort", "efficacy_calm",
+                  "efficacy_solutions", "efficacy_trouble"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 4) for c in efficacy_items],
+    checks.check_range(baseline, "efficacy_avg", 1, 4),
+])
+utils.gt_check_results(results, title="Range validity — Self-efficacy")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Math enjoyment (1–5) ──────────────────────────────────────────────────────
+math_enjoy_items = ["math_enjoy", "math_wish_no", "math_like_problems"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 5) for c in math_enjoy_items],
+    checks.check_range(baseline, "math_enjoy_avg", 1, 5),
+])
+utils.gt_check_results(results, title="Range validity — Math enjoyment")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Math anxiety (1–5) ────────────────────────────────────────────────────────
+math_anxiety_items = ["math_worry_grades", "math_nervous_exams"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 5) for c in math_anxiety_items],
+    checks.check_range(baseline, "math_anxiety_avg", 1, 5),
+])
+utils.gt_check_results(results, title="Range validity — Math anxiety")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Math self-concept (1–5) ───────────────────────────────────────────────────
+math_sc_items = ["math_does_well", "math_harder_than_peers"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 5) for c in math_sc_items],
+    checks.check_range(baseline, "math_selfconcept_avg", 1, 5),
+])
+utils.gt_check_results(results, title="Range validity — Math self-concept")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Math attitudes (1–4) ──────────────────────────────────────────────────────
+utils.gt_check_results(
+    checks.check_range(baseline, "math_useful", 1, 4),
+    title="Range validity — Math attitudes"
+)
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Belonging (1–5) ───────────────────────────────────────────────────────────
+belonging_items = ["belong_outsider", "belong_fits_in"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 5) for c in belonging_items],
+    checks.check_range(baseline, "belonging_avg", 1, 5),
+])
+utils.gt_check_results(results, title="Range validity — Belonging")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Metacognition ─────────────────────────────────────────────────────────────
+meta_1_4 = ["meta_study_allocation", "meta_when_stuck", "meta_hint_use",
+             "meta_review_errors", "meta_after_mistake", "meta_ai_use"]
+results = pd.concat([
+    *[checks.check_range(baseline, c, 1, 4) for c in meta_1_4],
+    checks.check_range(baseline, "meta_expected_exam", 1, 5),
+    checks.check_range(baseline, "meta_actual_exam", 1, 5),
+    checks.check_range(baseline, "meta_self_awareness", 1, 3),
+])
+utils.gt_check_results(results, title="Range validity — Metacognition")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Barriers (1–5) ────────────────────────────────────────────────────────────
+barrier_cols = ["barrier_money", "barrier_work_family", "barrier_parent_ideas",
+                "barrier_grades", "barrier_info_careers", "barrier_info_institution",
+                "barrier_family_resp"]
+results = pd.concat([checks.check_range(baseline, c, 1, 5) for c in barrier_cols])
+utils.gt_check_results(results, title="Range validity — Barriers")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+```{python}
+# ── Knowledge of opportunities (1–3) ─────────────────────────────────────────
+results = pd.concat([
+    checks.check_range(baseline, "knows_scholarship", 1, 3),
+    checks.check_range(baseline, "knows_beca18", 1, 3),
+    checks.check_range(baseline, "knows_alt_training", 1, 3),
+])
+utils.gt_check_results(results, title="Range validity — Knowledge of opportunities")
+```
+
+::: {.callout-note}
+All variables pass their range checks.
+:::
+
+### F. Derived variable consistency
+
+Cross-variable checks covering: scale average replication and reversal checks for reverse-coded items; internal consistency via Cronbach's alpha; straight-lining detection; floor and ceiling effects; item-total correlations for the math assessment; consistency between derived variables and their components; and coding consistency checks across question versions.
+
+#### Scale averages and reversals
+
+```{python}
+# ── Grit: reversal check (grit_quit_game and grit_lose_interest reversed) ─────
+utils.gt_check_results(
+    checks.check_reversal(baseline,
+                          direct_items=["grit_challenge", "grit_hardwork"],
+                          reversed_items=["grit_quit_game", "grit_lose_interest"],
+                          avg_col="grit_avg", scale_max=5),
+    title="Scale consistency — Grit"
+)
+```
+
+::: {.callout-note}
+Two items in the Grit scale are negatively worded — `grit_quit_game` ("quits a game if losing") and `grit_lose_interest` ("loses interest if the task is difficult") — meaning higher values indicate less grit and must be reversed before averaging. The check compares `grit_avg` against two candidate formulas — a naive mean of all items and a reversal-corrected mean (score_max + 1 − item) — and reports which matches. Result: reversal was correctly applied; the stored average matches the reversal-corrected formula for all 1,203 students.
+:::
+
+```{python}
+# ── Growth mindset: reversal check (both items reversed, scale_max=6) ─────────
+utils.gt_check_results(
+    checks.check_reversal(baseline,
+                          direct_items=[],
+                          reversed_items=mindset_items,
+                          avg_col="mindset_avg", scale_max=6),
+    title="Scale consistency — Growth mindset"
+)
+```
+
+::: {.callout-note}
+Both items in the Growth mindset scale are fixed-mindset statements — `mindset_fixed1` ("intelligence does not change") and `mindset_fixed2` ("intelligence cannot be changed") — and must be reversed before averaging to yield a growth mindset score. The simple mean of the raw items does not match `mindset_avg` for 84.2% of students, but reversing both items (scale_max + 1 − item, scale max = 6) and averaging produces a perfect match for all 1,203 students. The variable is correctly computed.
+:::
+
+```{python}
+# ── Locus of control: reversal check (locus_luck and locus_fate reversed) ─────
+utils.gt_check_results(
+    checks.check_reversal(baseline,
+                          direct_items=["locus_prepared", "locus_plans"],
+                          reversed_items=["locus_luck", "locus_fate"],
+                          avg_col="locus_avg", scale_max=5),
+    title="Scale consistency — Locus of control"
+)
+```
+
+::: {.callout-note}
+Two items in the Locus of control scale reflect an external locus — `locus_luck` ("unhappiness due to bad luck") and `locus_fate` ("trusting fate") — and must be reversed before averaging to yield an internal locus of control score. The simple mean of the raw items does not match `locus_avg` for 79.6% of students, but reversing `locus_luck` and `locus_fate` (scale_max + 1 − item, scale max = 5) and averaging with `locus_prepared` and `locus_plans` produces a perfect match for all 1,203 students. The variable is correctly computed.
+:::
+
+```{python}
+# ── Self-efficacy: average replication ────────────────────────────────────────
+utils.gt_check_results(
+    checks.check_avg_replication(baseline, efficacy_items, "efficacy_avg"),
+    title="Scale consistency — Self-efficacy"
+)
+```
+
+::: {.callout-note}
+The check verifies whether `efficacy_avg` equals the simple mean of the five self-efficacy items. Result: perfect match for all 1,203 students.
+:::
+
+```{python}
+# ── Math enjoyment: reversal check (math_wish_no reversed) ───────────────────
+utils.gt_check_results(
+    checks.check_reversal(baseline,
+                          direct_items=["math_enjoy", "math_like_problems"],
+                          reversed_items=["math_wish_no"],
+                          avg_col="math_enjoy_avg", scale_max=5),
+    title="Scale consistency — Math enjoyment"
+)
+```
+
+::: {.callout-note}
+One item in the Math enjoyment scale is negatively worded — `math_wish_no` ("wishes not to study math") — meaning higher values indicate less enjoyment and must be reversed before averaging. The check compares `math_enjoy_avg` against naive and reversal-corrected formulas. Result: reversal was correctly applied for all 1,203 students.
+:::
+
+```{python}
+# ── Math anxiety: average replication ─────────────────────────────────────────
+utils.gt_check_results(
+    checks.check_avg_replication(baseline, math_anxiety_items, "math_anxiety_avg"),
+    title="Scale consistency — Math anxiety"
+)
+```
+
+::: {.callout-note}
+The check verifies whether `math_anxiety_avg` equals the simple mean of `math_worry_grades` and `math_nervous_exams`. Result: perfect match for all 1,203 students.
+:::
+
+```{python}
+# ── Math self-concept: reversal check (math_harder_than_peers reversed) ───────
+utils.gt_check_results(
+    checks.check_reversal(baseline,
+                          direct_items=["math_does_well"],
+                          reversed_items=["math_harder_than_peers"],
+                          avg_col="math_selfconcept_avg", scale_max=5),
+    title="Scale consistency — Math self-concept"
+)
+```
+
+::: {.callout-note}
+One item in the Math self-concept scale is negatively worded — `math_harder_than_peers` ("math is harder for me than for my peers") — meaning higher values indicate lower self-concept and must be reversed before averaging. The check compares `math_selfconcept_avg` against naive and reversal-corrected formulas. Result: reversal was correctly applied for all 1,203 students.
+:::
+
+```{python}
+# ── Belonging: reversal check (belong_outsider reversed) ──────────────────────
+utils.gt_check_results(
+    checks.check_reversal(baseline,
+                          direct_items=["belong_fits_in"],
+                          reversed_items=["belong_outsider"],
+                          avg_col="belonging_avg", scale_max=5),
+    title="Scale consistency — Belonging"
+)
+```
+
+::: {.callout-note}
+`belong_outsider` ("feels like an outsider at school") is a negatively worded item and must be reversed before averaging. The simple mean of the raw items does not match `belonging_avg` for 80.4% of students, but reversing `belong_outsider` (scale_max + 1 − item, scale max = 5) and averaging with `belong_fits_in` produces a perfect match for all 1,203 students. The variable is correctly computed.
+:::
+
+#### Other derived variables
+
+```{python}
+results = pd.concat([
+    checks.check_derived(
+        baseline, "educ_parent_max",
+        formula_fn=lambda df: df[["educ_mother", "educ_father"]].max(axis=1),
+        label="equals highest parental education level",
+    ),
+    checks.check_derived(
+        baseline, "score_total_baseline",
+        formula_fn=lambda df: df[correct_cols].sum(axis=1),
+        label="equals count of correctly answered items",
+    ),
+    checks.check_derived(
+        baseline, "score_pct_baseline",
+        formula_fn=lambda df: df["score_total_baseline"] / 10,
+        label="equals total score as a proportion (÷ 10)",
+    ),
+])
+utils.gt_check_results(results, title="Derived variable consistency")
+```
+
+#### Math assessment — answer coding consistency
+
+For each math item, the answer selected by the student is encoded in the corresponding question variable. One answer value should correspond to the correct answer — all students who chose it should have `correct_* = 1` — and all other values should correspond to wrong answers, with `correct_* = 0`. The check counts students who chose the correct answer but are coded 0 (false negatives) and students who chose a wrong answer but are coded 1 (false positives).
+
+```{python}
+# For each math item, the answer selected by the student is encoded in the corresponding
+# question variable. One answer value should correspond to the correct answer
+# (correct_* = 1 for all who chose it) and all other values should correspond to
+# wrong answers (correct_* = 0 for all who chose them).
+# We identify the correct answer as the qbl_v5 value with the highest correct rate,
+# then count: (1) students who chose the correct answer but are coded 0 (false negatives),
+# and (2) students who chose a wrong answer but are coded 1 (false positives).
+
+item_suffixes = ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a8m", "a9s"]
+rows = []
+for suffix in item_suffixes:
+    correct_col = f"correct_{suffix}"
+    qbl_col     = f"qbl_v5_{suffix}"
+    ct = pd.crosstab(baseline[qbl_col], baseline[correct_col])
+    correct_answer = baseline.groupby(qbl_col)[correct_col].mean().idxmax()
+    wrong_answers  = [v for v in ct.index if v != correct_answer]
+    false_neg = int(ct.loc[correct_answer, 0]) if 0 in ct.columns else 0
+    false_pos = sum(int(ct.loc[v, 1]) for v in wrong_answers if 1 in ct.columns and v in ct.index)
+    n_total   = len(baseline)
+    rows.append({
+        "variable":       utils.VARIABLE_LABELS.get(correct_col, correct_col),
+        "check":          "answer coding consistent with correctness flag",
+        "n_flagged":      false_neg + false_pos,
+        "pct_flagged":    round((false_neg + false_pos) / n_total * 100, 1),
+        "false_neg":      false_neg,
+        "false_pos":      false_pos,
+        "pass":           (false_neg + false_pos) == 0,
+    })
+
+result_df = pd.DataFrame(rows)
+(
+    utils.gt_check_results(result_df, title="Answer coding consistency — Math assessment items")
+    .cols_label(false_neg="Chose correct, coded 0", false_pos="Chose wrong, coded 1")
+)
+```
+
+::: {.callout-warning}
+9 of 10 items have systematic false negatives: between 189 and 221 students per item selected the correct answer but are coded 0 in the corresponding `correct_*` variable. No false positives are found in any item — no student who chose a wrong answer is incorrectly coded as correct. `correct_a6` is the only item with perfect coding. The consistent direction of the error (only false negatives, never false positives) and its scale (~16–18% of students per item) suggest a systematic issue in how correctness was assigned rather than random miscoding. Researchers should verify the scoring against the de-anonymized data and original answer key before using `correct_*` or `score_total_baseline` in analysis.
+:::
+
+#### Cronbach's alpha
+
+Cronbach's alpha measures the internal consistency of a scale — the degree to which its items correlate with one another and thus measure the same underlying construct. Values above 0.7 are generally considered acceptable; values below 0.5 raise concerns about whether items belong to the same scale. The check is applied to psychological scales with four or more items, using scored items (reversed where applicable).
+
+```{python}
+def cronbach_alpha(df_items):
+    k = df_items.shape[1]
+    if k < 2:
+        return np.nan
+    item_vars = df_items.var(axis=0, ddof=1)
+    total_var = df_items.sum(axis=1).var(ddof=1)
+    return (k / (k - 1)) * (1 - item_vars.sum() / total_var)
+
+def reverse(df, cols, scale_max):
+    return df[cols].apply(lambda x: scale_max + 1 - x)
+
+alpha_scales = {
+    "Grit": pd.concat([
+        baseline[["grit_challenge", "grit_hardwork"]],
+        reverse(baseline, ["grit_quit_game", "grit_lose_interest"], 5)
+    ], axis=1),
+    "Locus of control": pd.concat([
+        baseline[["locus_prepared", "locus_plans"]],
+        reverse(baseline, ["locus_luck", "locus_fate"], 5)
+    ], axis=1),
+    "Self-efficacy": baseline[["efficacy_hard_problems", "efficacy_effort", "efficacy_calm",
+                               "efficacy_solutions", "efficacy_trouble"]],
+    "Metacognition": baseline[["meta_study_allocation", "meta_when_stuck", "meta_hint_use",
+                               "meta_review_errors", "meta_after_mistake", "meta_ai_use"]],
+}
+
+alpha_rows = []
+for scale, items in alpha_scales.items():
+    alpha = round(cronbach_alpha(items.dropna()), 3)
+    alpha_rows.append({
+        "Scale":   scale,
+        "Items":   items.shape[1],
+        "Alpha":   alpha,
+    })
+
+(
+    utils.gt_matrix(pd.DataFrame(alpha_rows), title="Cronbach's alpha — Psychological scales (4+ items)")
+    .tab_style(
+        style=style.fill(color="#FDECEA"),
+        locations=loc.body(rows=lambda x: x["Alpha"] < 0.7),
+    )
+)
+```
+
+::: {.callout-warning}
+All four scales show Cronbach's alpha near zero (range: −0.103 to 0.025), far below the 0.7 threshold. This is an unexpected result for validated psychological instruments. Researchers should investigate the source of these values — including verifying the original Qualtrics configuration — before drawing conclusions about scale reliability.
+:::
+
+#### Straight-lining detection
+
+Straight-lining occurs when a student gives the exact same response to every item in a scale, which may indicate inattentive or careless responding. The check is applied to psychological scales with four or more items — where the probability of coincidental ties is low enough to make the flag meaningful — and to the ten math assessment items, where straight-lining corresponds to a perfect score (all correct) or a zero score (all wrong).
+
+```{python}
+correct_cols_sl = ["correct_a1","correct_a2","correct_a3","correct_a4","correct_a5",
+                   "correct_a6","correct_a7","correct_a8","correct_a8m","correct_a9s"]
+
+scale_items_sl = {
+    "Grit":                  ["grit_challenge","grit_quit_game","grit_lose_interest","grit_hardwork"],
+    "Locus of control":      ["locus_luck","locus_fate","locus_prepared","locus_plans"],
+    "Self-efficacy":         ["efficacy_hard_problems","efficacy_effort","efficacy_calm","efficacy_solutions","efficacy_trouble"],
+    "Metacognition":         ["meta_study_allocation","meta_when_stuck","meta_hint_use","meta_review_errors","meta_after_mistake","meta_ai_use"],
+    "Barriers":              ["barrier_money","barrier_work_family","barrier_parent_ideas","barrier_grades","barrier_info_careers","barrier_info_institution","barrier_family_resp"],
+    "Math assessment":       correct_cols_sl,
+}
+
+sl_rows = []
+for scale, cols in scale_items_sl.items():
+    items = baseline[cols].dropna()
+    n_flagged = int((items.nunique(axis=1) == 1).sum())
+    sl_rows.append({
+        "variable":    scale,
+        "check":       "all items share the same response value",
+        "k":           len(cols),
+        "n_flagged":   n_flagged,
+        "pct_flagged": round(n_flagged / len(baseline) * 100, 1),
+    })
+
+(
+    utils.gt_check_results(pd.DataFrame(sl_rows), title="Straight-lining — Psychological scales (4+ items) and math assessment")
+    .cols_label(k="Items")
+)
+```
+
+::: {.callout-note}
+Straight-lining rates are negligible across all psychological scales: Grit (0.7%), Locus of control (1.0%), Self-efficacy (0.2%), Metacognition (0.1%), and Barriers (0.0%). The math assessment shows a more notable rate of 5.9% (71 students): 38 scored perfectly (all 10 items correct) and 33 scored zero (all 10 wrong). The all-zero cases may reflect disengaged respondents or be related to the answer coding inconsistency identified in the section above, and should be flagged and examined alongside the response quality indicators from section D.
+:::
+
+#### Floor and ceiling effects
+
+Floor and ceiling effects occur when a disproportionate share of students cluster at the minimum or maximum of a scale, suggesting the scale may not adequately discriminate at the extremes of the construct in this population. We flag students whose scale average exactly equals the theoretical minimum (floor) or maximum (ceiling).
+
+```{python}
+floor_ceiling_scales = {
+    "Grit":                    ("grit_avg",             1, 5),
+    "Growth mindset":          ("mindset_avg",           1, 6),
+    "Locus of control":        ("locus_avg",             1, 5),
+    "Self-efficacy":           ("efficacy_avg",          1, 4),
+    "Math enjoyment":          ("math_enjoy_avg",        1, 5),
+    "Math anxiety":            ("math_anxiety_avg",      1, 5),
+    "Math self-concept":       ("math_selfconcept_avg",  1, 5),
+    "Belonging":               ("belonging_avg",         1, 5),
+    "Math assessment (total)": ("score_pct_baseline",    0, 1),
+}
+
+fc_rows = []
+for scale, (col, lo, hi) in floor_ceiling_scales.items():
+    s = baseline[col].dropna()
+    n = len(s)
+    floor   = int((s == lo).sum())
+    ceiling = int((s == hi).sum())
+    fc_rows.append({
+        "variable":        scale,
+        "scale range":     f"[{lo}, {hi}]",
+        "floor (n)":       floor,
+        "floor (%)":       round(floor   / n * 100, 1),
+        "ceiling (n)":     ceiling,
+        "ceiling (%)":     round(ceiling / n * 100, 1),
+    })
+
+GT(pd.DataFrame(fc_rows)).tab_header(
+    title="Floor and ceiling effects — Scale averages"
+).tab_style(
+    style=style.text(weight="bold"), locations=loc.title()
+).tab_style(
+    style=style.borders(sides="top", weight="2px", color="#333333"),
+    locations=loc.body(rows=[0]),
+).tab_style(
+    style=style.fill(color="#FDECEA"),
+    locations=loc.body(rows=lambda x: (x["floor (%)"] > 5) | (x["ceiling (%)"] > 5)),
+)
+```
+
+::: {.callout-note}
+Floor and ceiling effects are negligible for most scales. Belonging shows the most notable floor effect (5.1%, 61 students at the minimum), followed by Math anxiety (4.8%) and Math self-concept (4.7%). Ceiling effects are modest across all scales, reaching 3.8% for Math anxiety and 3.7% for Belonging. None of these rates are severe enough to question the validity of the scales, but they suggest mild compression at the lower end of Math anxiety, Math self-concept, and Belonging in this population. The math assessment floor and ceiling entries correspond to the 33 all-wrong and 38 all-correct students identified in the straight-lining check above.
+:::
+
+#### Item-total correlations — Math assessment
+
+An item-total correlation measures how strongly each item correlates with the sum of the remaining items in the same scale. Values below 0.2 suggest an item may not be measuring the same underlying construct and could be distorting the total score.
+
+```{python}
+it_rows = []
+for col in correct_cols:
+    rest = baseline[correct_cols].drop(columns=col).sum(axis=1)
+    corr = round(baseline[col].corr(rest), 3)
+    it_rows.append({
+        "variable":    utils.VARIABLE_LABELS.get(col, col),
+        "check":       "item-total correlation ≥ 0.2",
+        "correlation": corr,
+        "flagged":     "Yes" if corr < 0.2 else "No",
+        "pass":        corr >= 0.2,
+    })
+
+(
+    utils.gt_check_results(pd.DataFrame(it_rows), title="Item-total correlations — Math assessment")
+    .cols_label(flagged="Flagged", correlation="Correlation")
+)
+```
+
+::: {.callout-note}
+All ten math items have item-total correlations between 0.31 and 0.37, comfortably above the 0.2 threshold. The values are notably uniform across items, consistent with the similar difficulty levels observed in the range validity section. No item appears to be measuring a different construct or to be distorting the total score.
+:::

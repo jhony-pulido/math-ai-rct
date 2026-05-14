@@ -70,8 +70,10 @@ def set_theme():
         "axes.spines.top": False,
         "axes.spines.right": False,
         "axes.grid": True,
-        "grid.color": "#E5E5E5",
-        "grid.linewidth": 0.8,
+        "axes.axisbelow": True,
+        "grid.color": "#CCCCCC",
+        "grid.linewidth": 0.6,
+        "grid.linestyle": "-.",
         "font.family": "sans-serif",
         "font.size": 11,
         "axes.titlesize": 13,
@@ -249,17 +251,17 @@ VARIABLE_LABELS: dict[str, str] = {
     "mathconf_growth":             "Math confidence: growth",
     # Computer lab
     "lab_productive":              "Lab productivity",
-    "lab_preferred_hours":         "Preferred lab hours",
+    "lab_preferred_hours":         "Preferred lab hours (per week)",
     # Hours & study habits
-    "hours_school":                "Hours at school",
-    "hours_study":                 "Hours studying",
-    "hours_friends":               "Hours with friends",
-    "hours_entertainment":         "Hours on entertainment",
-    "hours_housework":             "Hours on housework",
-    "hours_unpaid_work":           "Hours on unpaid work",
-    "hours_paid_work":             "Hours on paid work",
-    "hours_sleep":                 "Hours sleeping",
-    "hours_sport":                 "Hours on sport",
+    "hours_school":                "Hours at school (per day)",
+    "hours_study":                 "Hours studying (per day)",
+    "hours_friends":               "Hours with friends (per day)",
+    "hours_entertainment":         "Hours on entertainment (per day)",
+    "hours_housework":             "Hours on housework (per day)",
+    "hours_unpaid_work":           "Hours on unpaid work (per day)",
+    "hours_paid_work":             "Hours on paid work (per day)",
+    "hours_sleep":                 "Hours sleeping (per day)",
+    "hours_sport":                 "Hours on sport (per day)",
     "math_study_weekly":           "Math study frequency (weekly)",
     "study_context":               "Study context",
     "digital_tools_used":          "Digital tools used",
@@ -404,11 +406,14 @@ def gt_check_results(
         )
 
     col_labels = {}
-    if "variable" in display_df.columns:    col_labels["variable"]    = "Variable"
-    if "check" in display_df.columns:       col_labels["check"]       = "Check"
-    if "n_flagged" in display_df.columns:   col_labels["n_flagged"]   = "N Flagged"
-    if "pct_flagged" in display_df.columns: col_labels["pct_flagged"] = "% Flagged"
-    if "pass" in display_df.columns:        col_labels["pass"]        = "Pass"
+    if "variable" in display_df.columns:          col_labels["variable"]          = "Variable"
+    if "check" in display_df.columns:             col_labels["check"]             = "Check"
+    if "n_flagged" in display_df.columns:         col_labels["n_flagged"]         = "N Flagged"
+    if "pct_flagged" in display_df.columns:       col_labels["pct_flagged"]       = "% Flagged"
+    if "pass" in display_df.columns:              col_labels["pass"]              = "Pass"
+    if "naive_match_pct" in display_df.columns:   col_labels["naive_match_pct"]   = "% match (no reversal)"
+    if "reversed_match_pct" in display_df.columns: col_labels["reversed_match_pct"] = "% match (with reversal)"
+    if "conclusion" in display_df.columns:        col_labels["conclusion"]        = "Conclusion"
 
     gt = GT(display_df)
     if title:
@@ -433,6 +438,21 @@ def gt_check_results(
             locations=loc.body(rows=lambda x: x["pass"] == False),
         )
 
+    return gt
+
+
+def gt_matrix(df: pd.DataFrame, title: str = "") -> GT:
+    """Render a crosstab / matrix DataFrame as a formatted great_tables table."""
+    gt = GT(df)
+    if title:
+        gt = (
+            gt.tab_header(title=title)
+            .tab_style(style=style.text(weight="bold"), locations=loc.title())
+        )
+    gt = gt.tab_style(
+        style=style.borders(sides="top", weight="2px", color="#333333"),
+        locations=loc.body(rows=[0]),
+    )
     return gt
 
 

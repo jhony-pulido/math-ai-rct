@@ -113,14 +113,16 @@ def check_avg_replication(
     items: list[str],
     avg_col: str,
     tolerance: float = 0.01,
+    label: str | None = None,
 ) -> pd.DataFrame:
     """Check that avg_col matches the row-wise mean of items (within tolerance)."""
     computed = df[items].mean(axis=1)
     mismatch = (computed - df[avg_col]).abs() > tolerance
     n_flagged = mismatch.sum()
+    check_label = label or f"stored average matches simple item mean (tol={tolerance})"
     return pd.DataFrame([{
         "variable": avg_col,
-        "check": f"computed avg != {avg_col} (tol={tolerance})",
+        "check": check_label,
         "n_flagged": int(n_flagged),
         "pct_flagged": round(n_flagged / len(df) * 100, 1),
         "pass": n_flagged == 0,
@@ -248,17 +250,20 @@ def check_ordering(
 ) -> pd.DataFrame:
     """
     Flag rows where values do not increase (weakly) across cols left to right.
+    Rows with any missing value in cols are excluded from the check.
     E.g., salary_secondary <= salary_technical <= salary_university.
     """
-    flagged = pd.Series([False] * len(df))
+    complete = df[cols].dropna()
+    flagged = pd.Series([False] * len(complete))
     for i in range(len(cols) - 1):
-        flagged |= df[cols[i]].fillna(0) > df[cols[i + 1]].fillna(0)
-    n_flagged = flagged.sum()
+        flagged |= complete[cols[i]].values > complete[cols[i + 1]].values
+    n_flagged = int(flagged.sum())
+    n_complete = len(complete)
     check_label = label or f"ordering violated: {' <= '.join(cols)}"
     return pd.DataFrame([{
         "variable": " / ".join(cols),
-        "check": check_label,
-        "n_flagged": int(n_flagged),
-        "pct_flagged": round(n_flagged / len(df) * 100, 1),
+        "check": f"{check_label} (complete cases: {n_complete:,})",
+        "n_flagged": n_flagged,
+        "pct_flagged": round(n_flagged / n_complete * 100, 1) if n_complete > 0 else 0.0,
         "pass": n_flagged == 0,
     }])
