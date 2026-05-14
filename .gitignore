@@ -22,3 +22,4 @@ Project Context.txt
 
 /.quarto/
 **/*.quarto_ipynb
+report/01_data_quality_backup.qmd
